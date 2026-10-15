@@ -57,11 +57,12 @@
   white-space: pre-wrap;
 }
 .df-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   margin-bottom: 20px;
 }
 .df-metrics .metric-value {
   font-size: clamp(20px, 2.2vw, 30px);
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 .df-report-scope {
