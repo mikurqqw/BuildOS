@@ -42,3 +42,5 @@ Browser QA used a separate temporary database schema and synthetic existing owne
 ## Password-free demo entry
 
 The public demo bypasses company login only for illustrative in-memory records, without creating an employee session. AuthGate regression tests cover API failure, no-session demo access and standalone demo without unavailable password fields. VITE_DEMO_ONLY disables session queries for the static deployment. The full API remains protected.
+
+Release checks: 28 tests, lint, types, formatting and the standalone demo production build passed. Clean browser reload resolved a development HMR context mismatch; standalone demo opened with no company session, and procurement status changed successfully without API access. GitHub main contains the source. Sites deployment succeeded at https://buildos-demo.activelynx16.chatgpt.site with owner-private access. Full Fastify/PostgreSQL deployment remains deferred by the user.

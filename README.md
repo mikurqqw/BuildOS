@@ -4,6 +4,8 @@ MVP for AlmatyHUB.
 
 ## Hosted demo
 
+Demo: https://buildos-demo.activelynx16.chatgpt.site (owner-private Sites hosting). Source: https://github.com/mikurqqw/BuildOS. The full API/database is not deployed.
+
 The sign-in screen offers a password-free demo. It uses an illustrative in-memory workspace and never grants company access. Reload resets its records. `pnpm build:demo` builds a standalone demo in `dist/` with employee login disabled and no API calls. The full server-backed development build retains employee authentication. Demo files use browser storage and are not uploaded to a server.
 
 Construction workspace for contractors in Kazakhstan. Requested stack: React 19 / Vite / strict TypeScript / Tailwind / Fastify 5 / PostgreSQL / Prisma / pnpm / Turbo. Russian and light theme are defaults; Kazakh, English and dark theme are available.
@@ -65,4 +67,4 @@ Compose migrates first, then runs API and web at loopback http://127.0.0.1:8080.
 
 Configure TLS, rate-limit behavior behind the actual proxy, account recovery, operational audit, backups and a verified restore procedure. Back up the complete PostgreSQL database (including StoredFile) with pg_dump and test restoration into a separate database. Rollback app releases only when compatible with deployed migrations; do not reverse migrations by deleting data. Monitor /healthz, /readyz and logs. User offboarding and company isolation have local integration coverage; production, containers, Redis delivery and disaster recovery remain unverified.
 
-No SSO, 2FA, password reset, per-project permissions, immutable audit, real-time collaboration, file versioning/scanning, CPM scheduling, procurement approval/warehouse ledger, accounting, offline sync, AI/OCR, signatures or billing is connected. No commit, push or public deployment has been performed.
+No SSO, 2FA, password reset, per-project permissions, immutable audit, real-time collaboration, file versioning/scanning, CPM scheduling, procurement approval/warehouse ledger, accounting, offline sync, AI/OCR, signatures or billing is connected. The demo is deployed; the full company server is not.
