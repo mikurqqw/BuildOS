@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router';
+import { BrowserRouter, HashRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/manrope';
@@ -18,6 +18,9 @@ import { AuthGate } from './auth/Gate';
 const client = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
+// Static hosts without SPA rewrites must keep routes in the URL fragment.
+const Router =
+  import.meta.env.VITE_HASH_ROUTER === 'true' ? HashRouter : BrowserRouter;
 function Workspace() {
   const { demoMode, session } = useAuth();
   return (
@@ -30,7 +33,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <QueryClientProvider client={client}>
-        <BrowserRouter>
+        <Router>
           <I18nProvider>
             <AuthProvider>
               <AuthGate>
@@ -38,7 +41,7 @@ createRoot(document.getElementById('root')!).render(
               </AuthGate>
             </AuthProvider>
           </I18nProvider>
-        </BrowserRouter>
+        </Router>
       </QueryClientProvider>
     </ErrorBoundary>
   </StrictMode>,

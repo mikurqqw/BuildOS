@@ -6,6 +6,8 @@ MVP for AlmatyHUB.
 
 Demo: https://buildos-demo.activelynx16.chatgpt.site (Sites hosting; current audience is preserved). Source: https://github.com/mikurqqw/BuildOS. The full API/database is not deployed.
 
+GitHub Pages publication is configured in `.github/workflows/pages.yml`. It builds the same standalone demo on pushes to `main`, uploads only `dist/` and publishes using the `github-pages` environment. The repository's Settings → Pages source must be GitHub Actions. The expected project URL is `https://mikurqqw.github.io/BuildOS/`; routes use URL fragments so refreshing a section works without server rewrites. No external deployment token is stored. For a local Pages-equivalent build, set `VITE_BASE_PATH=/BuildOS/` and `VITE_HASH_ROUTER=true` before `pnpm build:demo`. Other builds retain their existing root paths and browser routing.
+
 The sign-in screen offers Demo 1 (empty) and Demo 2 (populated), both password-free. It uses an illustrative in-memory workspace and never grants company access. Reload resets its records. `pnpm build:demo` builds a standalone demo in `dist/` with employee login disabled and no API calls. The full server-backed development build retains employee authentication. Demo files use browser storage and are not uploaded to a server.
 
 Construction workspace for contractors in Kazakhstan. Requested stack: React 19 / Vite / strict TypeScript / Tailwind / Fastify 5 / PostgreSQL / Prisma / pnpm / Turbo. Russian and light theme are defaults; Kazakh, English and dark theme are available.

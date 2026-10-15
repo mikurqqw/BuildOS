@@ -259,7 +259,16 @@ export function Shell({
   );
   return (
     <div className="app-layout">
-      <a className="skip-link" href="#main">
+      <a
+        className="skip-link"
+        href="#main"
+        onClick={(event) => {
+          event.preventDefault();
+          const main = document.getElementById('main');
+          main?.focus();
+          main?.scrollIntoView({ block: 'start' });
+        }}
+      >
         {t.overview}
       </a>
       <aside className="sidebar">{sidebar}</aside>
@@ -353,7 +362,7 @@ export function Shell({
             {t.storageError}
           </div>
         )}
-        <main id="main" className="main-content">
+        <main id="main" className="main-content" tabIndex={-1}>
           {children}
         </main>
         <nav className="mobile-tabs" aria-label={t.workspace}>
