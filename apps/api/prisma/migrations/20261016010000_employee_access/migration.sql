@@ -1,0 +1,15 @@
+CREATE TABLE "Company" (id UUID PRIMARY KEY, name TEXT NOT NULL, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE "AppUser" (id UUID PRIMARY KEY, "companyId" UUID NOT NULL REFERENCES "Company"(id), name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, "passwordHash" TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('OWNER','EMPLOYEE')), position TEXT NOT NULL DEFAULT '', active BOOLEAN NOT NULL DEFAULT true, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE "AuthSession" ("tokenHash" TEXT PRIMARY KEY, "userId" UUID NOT NULL REFERENCES "AppUser"(id) ON DELETE CASCADE, "expiresAt" TIMESTAMPTZ NOT NULL);
+CREATE INDEX "AuthSession_expiresAt_idx" ON "AuthSession"("expiresAt");
+CREATE TABLE "Invitation" (id UUID PRIMARY KEY, "companyId" UUID NOT NULL REFERENCES "Company"(id), name TEXT NOT NULL, email TEXT NOT NULL, position TEXT NOT NULL DEFAULT '', "tokenHash" TEXT UNIQUE NOT NULL, "expiresAt" TIMESTAMPTZ NOT NULL, "acceptedAt" TIMESTAMPTZ);
+CREATE UNIQUE INDEX "Invitation_pending_email_idx" ON "Invitation"("companyId",email) WHERE "acceptedAt" IS NULL;
+CREATE TABLE "CompanyWorkspace" ("companyId" UUID PRIMARY KEY REFERENCES "Company"(id), payload JSONB NOT NULL, version INTEGER NOT NULL DEFAULT 0, "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE "StoredFile" (id TEXT PRIMARY KEY, "companyId" UUID NOT NULL REFERENCES "Company"(id), name TEXT NOT NULL, mime TEXT NOT NULL, bytes BYTEA NOT NULL, "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX "StoredFile_companyId_idx" ON "StoredFile"("companyId");
+ALTER TABLE "CompanyWorkspace" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CompanyWorkspace" FORCE ROW LEVEL SECURITY;
+CREATE POLICY workspace_company ON "CompanyWorkspace" USING ("companyId"::text=current_setting('app.company_id',true)) WITH CHECK ("companyId"::text=current_setting('app.company_id',true));
+ALTER TABLE "StoredFile" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "StoredFile" FORCE ROW LEVEL SECURITY;
+CREATE POLICY file_company ON "StoredFile" USING ("companyId"::text=current_setting('app.company_id',true)) WITH CHECK ("companyId"::text=current_setting('app.company_id',true));

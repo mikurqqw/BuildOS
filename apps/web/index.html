@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#2F5BFF" />
+    <meta
+      name="description"
+      content="BuildOS — рабочее пространство управления строительством"
+    />
+    <title>BuildOS — Construction workspace</title>
+    <script>
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('buildos-theme') === 'dark' ? 'dark' : 'light';
+        document.documentElement.lang =
+          localStorage.getItem('buildos-locale') || 'ru';
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

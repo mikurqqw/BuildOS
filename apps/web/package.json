@@ -1,0 +1,34 @@
+{
+  "name": "@buildos/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@buildos/shared": "workspace:*",
+    "@buildos/ui": "workspace:*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "^7.9.6",
+    "@tanstack/react-query": "^5.90.0",
+    "@tanstack/react-table": "^8.21.3",
+    "react-hook-form": "^7.66.0",
+    "zod": "^4.1.12",
+    "lucide-react": "^0.577.0",
+    "recharts": "^3.4.1",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@fontsource-variable/inter": "^5.2.8"
+  },
+  "devDependencies": {
+    "vite": "^7.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "@tailwindcss/vite": "^4.1.17",
+    "tailwindcss": "^4.1.17",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
+  }
+}

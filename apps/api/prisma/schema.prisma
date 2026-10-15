@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model OutboxEvent {
+  id String @id @default(uuid()) @db.Uuid
+  type String
+  payload Json
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  publishedAt DateTime? @db.Timestamptz(6)
+  @@index([publishedAt, createdAt])
+}
+model Company {
+  id String @id @db.Uuid
+  name String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  users AppUser[]
+  invitations Invitation[]
+  workspace CompanyWorkspace?
+  files StoredFile[]
+}
+model AppUser {
+  id String @id @db.Uuid
+  companyId String @db.Uuid
+  company Company @relation(fields:[companyId],references:[id])
+  name String
+  email String @unique
+  passwordHash String
+  role String
+  position String @default("")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  sessions AuthSession[]
+}
+model AuthSession {
+  tokenHash String @id
+  userId String @db.Uuid
+  user AppUser @relation(fields:[userId],references:[id],onDelete:Cascade)
+  expiresAt DateTime @db.Timestamptz(6)
+  @@index([expiresAt])
+}
+model Invitation {
+  id String @id @db.Uuid
+  companyId String @db.Uuid
+  company Company @relation(fields:[companyId],references:[id])
+  name String
+  email String
+  position String @default("")
+  tokenHash String @unique
+  expiresAt DateTime @db.Timestamptz(6)
+  acceptedAt DateTime? @db.Timestamptz(6)
+}
+model CompanyWorkspace {
+  companyId String @id @db.Uuid
+  company Company @relation(fields:[companyId],references:[id])
+  payload Json
+  version Int @default(0)
+  updatedAt DateTime @default(now()) @db.Timestamptz(6)
+}
+model StoredFile {
+  id String @id
+  companyId String @db.Uuid
+  company Company @relation(fields:[companyId],references:[id])
+  name String
+  mime String
+  bytes Bytes
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  @@index([companyId])
+}

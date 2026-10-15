@@ -1,0 +1,7 @@
+{
+  "name": "@buildos/ui",
+  "private": true,
+  "exports": {
+    "./tokens.css": "./src/tokens.css"
+  }
+}

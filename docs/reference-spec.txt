@@ -1,0 +1,448 @@
+# BuildOS — Full Product Build Specification (v2)
+
+> **Purpose:** single, complete task description for a code-generation agent.
+> **Scope:** the *whole* product (all modules of the original 90-section spec), delivered in dependency-ordered phases. Nothing is dropped; phases only define build order.
+> **Merged from:** original product spec + audit/analysis spec. The audit findings are turned into **engineering requirements** (traceability, confirmation, honest metrics, data ownership), not into scope cuts.
+> If anything here conflicts with a default habit of yours, this document wins.
+
+---
+
+## 0. ROLE AND WORKING RULES
+
+You are a **Senior Fullstack Architect and Lead UI/UX Engineer**. You write production-ready code, design clean architecture, and build a modern, lively, polished interface.
+
+- Talk to the user in **Russian**. Write **code, comments, commit messages, docs in English**.
+- Comments explain *why*, not *what*. Names are descriptive, no abbreviations.
+- Add dependencies only with a reason; state it in the summary. Never invent library APIs: if unsure, read the official docs and state the version used. For fast-moving libraries (React, Vite, Tailwind, Fastify, Prisma, shadcn/ui, motion, AI SDKs) check breaking changes first.
+- Do not copy third-party code or designs verbatim; check licences (MIT/Apache fine, GPL needs care).
+
+### Workflow for every task
+1. **Understand** – read existing code first; follow established patterns.
+2. **Plan** – for >1 file give a short plan (what, where, why), then implement.
+3. **Ambiguity** – if an architecture-defining requirement is unclear, ask **one** precise question; otherwise assume reasonably and state the assumption.
+4. **Implement** in small steps; every step leaves the repo working.
+5. **Verify** – run lint, type-check, tests, build yourself; fix everything that fails. Never say "done" until green.
+6. **Report** – what was done, files changed, how verified, remaining risks.
+
+### Hard code rules
+1. **Working code only.** No stubs, `TODO: implement later`, pseudocode, or silently reduced functionality. Each phase is implemented completely before the next starts. External integrations that cannot be exercised without third-party credentials are implemented against the documented API behind an adapter interface, with contract tests using recorded fixtures, and are **disabled by configuration** (UI hides them) until credentials are supplied — never faked.
+2. Files ≤ 150 lines; split by responsibility. Short single-purpose functions.
+3. TypeScript `strict`; **no `any`** (`unknown` + narrowing); no unexplained `@ts-ignore`.
+4. Error handling everywhere: no swallowed exceptions, correct HTTP statuses, one unified error format.
+5. Validate every boundary (forms, API in/out, env vars, queue payloads, webhook payloads, AI output, imported files) with **Zod**; schemas live in `packages/shared`.
+6. No duplication: extract utilities, hooks, shared components.
+7. No unrelated refactoring; don't delete files or rewrite history without permission.
+8. Conventional Commits, small atomic commits, one branch per task.
+9. Bug → reproduce with a failing test first, then fix.
+
+---
+
+## 1. PRODUCT
+
+**BuildOS** is an AI-native operating system for **general contractors** (Kazakhstan first → CIS → international). It covers the full construction lifecycle:
+
+`Tender → analysis → estimate → contract → planning → procurement → construction → quality control → as-built documentation → finance → handover → analytics`
+
+It is **not** "another CRM/ERP" and **not** "ChatGPT for builders". It keeps a traceable link between **source documents → obligations → work → resources → field facts → money → management decisions**, and AI works *on top of* that connected, permission-aware data.
+
+### Data model backbone (the "knowledge graph")
+`Company → Project → Object → Zone → Work → Resource → Document → Task → Event → Risk → Financial result`
+
+- **Work** is a first-class entity (`WorkItem`, a WBS element with a stable code). It is linked to tasks, resources/materials, contractors, documents, schedule activities, budget lines and costs.
+- Implement relationships both as real foreign keys **and** as a typed `EntityLink` table (`sourceType, sourceId, targetType, targetId, linkType, createdBy, createdAt`) so the AI context builder, search, impact analysis ("what depends on this contract clause?") and the UI "Related" panel use one mechanism.
+
+### Principles
+1. **One source of truth per metric** – every metric has a definition, an owner, an official source and an update rule (see §6.3 Metric Registry).
+2. **Mobile-first on the construction site** – every site action works on a phone, including offline capture.
+3. **AI-native, not AI-only** – AI is embedded in processes (extraction, suggestions, drafting, insights, forecasts), not just a chat.
+4. **Human in control** – AI recommends/drafts; critical actions need human approval enforced **in server code**, never only in prompts.
+5. **Traceability over magic** – every AI output shows its sources (document, version, page/fragment, date), inputs, model, and confirmation status.
+6. **Honest data** – unknown ≠ zero. Missing records never mean "no event". Numbers are shown only with a defined method and inputs.
+
+### Honest-claims rules (UI copy, AI prompts, reports)
+- Any score, margin, forecast or prediction must expose: **method, inputs used, data completeness, as-of time, and limits**. If inputs are insufficient the feature **refuses with an explanation** instead of producing a number.
+- Example figures from the original spec (Score 78/100, margin 14 %, "+17 % concrete") are **illustrations only**; the implementation must compute them from real, user-supplied or imported data (see §5.4, §5.18, §5.26).
+- AI outputs are *recommendations*, labelled "AI suggestion"; legal/finance/quality outputs add "not a substitute for a lawyer / accountant / engineer".
+- A `confidence` field is a **model-reported or heuristic label**, not a calibrated probability; never display it as a percentage of correctness unless calibrated against an evaluation set (§5.26.9).
+
+---
+
+## 2. TECH STACK (fixed)
+
+| Area | Choice |
+|---|---|
+| Monorepo | pnpm workspaces + Turborepo: `apps/web`, `apps/api`, `apps/worker`, `packages/shared` (Zod schemas, types, permission catalogue, i18n keys), `packages/ui`, `packages/config` |
+| Language | TypeScript strict everywhere; Node.js ≥ 22 LTS |
+| Web | React 19 + Vite + React Router + TanStack Query + TanStack Table + react-hook-form + Zod |
+| UI | Tailwind CSS (latest stable), shadcn/ui, Radix, Lucide, Framer Motion (`motion`), Recharts (charts), date-fns |
+| Fonts | `@fontsource-variable/manrope` (headings) + `@fontsource-variable/inter` (body); self-hosted; max 2 families |
+| Special UI | Gantt/timeline: **own** virtualised SVG/Canvas component; PDF: `pdfjs-dist` + own SVG markup layer; BIM/IFC: `web-ifc` + `three` (lazy-loaded; verify current APIs) |
+| API | Fastify + `fastify-type-provider-zod`; plugins: helmet, cors, rate-limit, cookie, multipart, websocket, swagger (OpenAPI) |
+| DB | PostgreSQL 16, Prisma (migrations mandatory), `pgvector` for embeddings, `tsvector` FTS (Russian + English), PostgreSQL **RLS** |
+| Cache/queues | Redis; BullMQ for jobs (document pipeline, AI, sync, notifications, imports, reports); outbox pattern for events |
+| Search | Postgres FTS + pgvector by default behind a `SearchProvider` interface; **OpenSearch adapter** implemented for scale (enabled by env) |
+| Storage | `ObjectStorage` interface: local disk (dev) + S3-compatible (prod): versioning, signed short-lived URLs, lifecycle config |
+| Realtime | WebSocket (Fastify) for live updates, presence on documents, notification push |
+| Auth | argon2id; short-lived JWT access (memory) + rotating refresh token (`httpOnly`, `SameSite=Strict`) + CSRF; TOTP 2FA; OIDC/SSO; WebAuthn (passkeys) optional |
+| Mobile | Installable **PWA** (primary) with service worker + IndexedDB outbox; **Capacitor** wrapper config for native camera/push/background sync on iOS/Android (same codebase, no separate business logic) |
+| AI | Provider-agnostic **AI Gateway** (OpenAI, Anthropic, Google, OpenAI-compatible/open-source endpoints, local models via Ollama/vLLM-compatible API) |
+| Observability | pino (redaction), OpenTelemetry traces/metrics, Prometheus-compatible `/metrics`, Sentry-compatible error hook (env-gated) |
+| Tests | Vitest, Testing Library, Playwright, Testcontainers (real Postgres/Redis), k6 smoke load script, AI evaluation harness |
+| DevOps | Docker (multi-stage), Docker Compose (dev/prod-like), Kubernetes manifests/Helm chart for scale-out, GitHub Actions CI/CD, `.env.example` per app, Zod-validated env at startup |
+
+**Architecture:** *modular monolith* with strict bounded contexts: `identity, organization, tenders, contracts, projects, schedule, construction, quality, safety, documents, pto, procurement, warehouse, equipment, subcontractors, budget, finance, hr, payroll, workflow, ai, search, notifications, integrations, analytics, billing, platform-admin`. Per module: **route → service → repository**; business logic only in services; DTOs (Zod) ≠ Prisma models; modules communicate via service interfaces and a typed **domain event bus** with transactional outbox. Modules are extractable into services later without rewriting (no cross-module table access).
+
+---
+
+## 3. MULTI-TENANCY, RBAC, SECURITY, AUDIT
+
+1. **Tenant isolation:** every tenant-owned row has `companyId`; repositories require a tenant-scoped context; PostgreSQL **RLS** as a second barrier; object-storage keys prefixed per tenant; search and vector indices filtered per tenant; AI retrieval filtered per tenant **and** per user permission. A dedicated **isolation test suite** attacks every endpoint, file URL, search query, websocket channel, export and AI retrieval path.
+2. **RBAC + scopes:** permission = `role × company × project × object × module × action`. Roles are data (editable per company) built from a shared permission catalogue. Built-in roles: Owner, Director, Project Manager, Chief Engineer, Tender Specialist, Foreman, Master, Engineer/Inspector, PTO, Procurement, Warehouse Keeper, Accountant, Finance Director, Lawyer, HR, Quality Specialist, HSE Specialist, Subcontractor (external, strictly scoped), Client/Customer (external, read + approve scoped), Viewer. Server-side policy layer; client only hides UI.
+3. **External users** (subcontractors, customers) get a separate portal view, minimal data, per-project invitations, expiring access, full audit.
+4. **OWASP Top 10:** parameterised queries only; output escaping; strict CORS allow-list; CSRF; helmet; rate limiting (strict on auth, AI, uploads, webhooks); request-size limits; upload allow-list + MIME sniffing + zip-bomb/path-traversal protection; signed download URLs; SSRF guard on any server-side fetch (webhooks, integrations); secure headers + CSP.
+5. **Auth features:** register, login, logout, reset/change password, 2FA (TOTP + recovery codes), invitations, session & device management with revoke, login alerts, SSO (OIDC), passkeys (optional), **digital signature adapter** (`SignatureProvider`; NCALayer-compatible adapter for Kazakhstan ЭЦП and a generic PKCS#7 verifier — verify current docs).
+6. **Encryption:** TLS everywhere, encryption at rest (DB/storage via infra config documented + field-level encryption for secrets such as integration tokens, bank details).
+7. **Audit log** (append-only, tamper-evident hash chain): `user, action, entityType, entityId, oldValue, newValue, timestamp, ip, device`. Mandatory for auth, permissions, status transitions, financial operations, document actions, approvals, AI action confirmations, exports, integration changes. Searchable and exportable in UI.
+8. **Privacy / data governance (Kazakhstan-aware):** data-residency setting per company; per-company AI policy (`DISABLED | EXTERNAL_PROVIDERS | LOCAL_ONLY`, per-provider allow-list, "never send documents of type X externally"); PII minimisation and redaction before external AI calls where configured; retention policies; data export and deletion workflows; consent records for employee photos/contacts. **Customer data is never used for model training** unless an explicit, recorded, contract-level opt-in exists (stored per company, enforced in code).
+9. **Backups & DR:** scripts and docs for PostgreSQL daily backup + PITR (WAL archiving config), backup verification job (restore into scratch DB + checksum), object-storage versioning/replication/lifecycle config, documented RPO/RTO and restore runbook.
+10. Secrets only via env/secret manager; never in code or logs; never log tokens, passwords, personal data, or raw document text.
+
+---
+
+## 4. DESIGN SYSTEM — "Cobalt & Signal"
+
+**Character:** calm, precise engineering instrument with one confident accent. Ink-blue neutrals, cobalt accent, signal red for danger and one brand highlight. No grey default look.
+
+### 4.1 Tokens (`packages/ui/src/tokens.css` → Tailwind theme)
+
+| Token | Light | Dark |
+|---|---|---|
+| `--bg` | `#F6F8FC` | `#0A0F1C` |
+| `--surface` | `#FFFFFF` | `#111830` |
+| `--surface-raised` | `#FFFFFF` | `#172040` |
+| `--border` | `#DDE4EF` | `#26325A` |
+| `--text` | `#0E1730` | `#E8EDFA` |
+| `--text-muted` | `#55627F` | `#9AA7C7` |
+| `--accent` | `#2F5BFF` | `#7C9BFF` |
+| `--accent-hover` | `#2448D6` | `#9BB2FF` |
+| `--accent-soft` | `#EAF0FF` | `#1B2A66` |
+| `--accent-contrast` | `#FFFFFF` | `#0A0F1C` |
+| `--signal` (danger / brand highlight) | `#D13438` | `#FF6B6F` |
+| `--signal-soft` | `#FDECEC` | `#3A1620` |
+| `--success` | `#13795B` | `#3DD598` |
+| `--warning` | `#9A6700` | `#F5B544` |
+| `--info` | `#1F6FB2` | `#6CB6FF` |
+
+- 11-step neutral scale (50–950) on the ink-blue hue; semantic tokens sit on top. A build-time test **computes WCAG contrast** for every text/background pair in both themes and fails below AA.
+- Radii `6/10/14/20`; three soft blue-tinted shadow levels; spacing multiples of 4 px; container max-width 1440 px.
+- Brand mark: cobalt square with a signal-red corner notch. A cobalt→signal gradient may be used **once per screen at most** (hero / empty-state art).
+- Data-viz palette: 8 colour-blind-safe categorical colours + sequential and diverging ramps derived from the tokens; status is never colour-only (icon + label).
+
+### 4.2 Typography
+Manrope headings (tight tracking, 600–700), Inter body. Scale 12/14/16/18/20/24/30/36/48. Body line-height 1.5–1.7, headings 1.15–1.25. Tabular numerals for money, quantities and metrics.
+
+### 4.3 Layout
+- **Mobile-first** (base ~360 px, then `sm/md/lg/xl`); touch targets ≥ 44 px.
+- Desktop: collapsible sidebar (modules grouped, permission-filtered), top bar (global search ⌘/Ctrl-K, AI Command button, notifications, theme toggle, project switcher, user menu), breadcrumbs, optional right-hand "Related & AI" panel.
+- Mobile: bottom tab bar (Home, Tasks, ＋ capture, Issues, More) and capture sheet (photo, issue, report, material request, checklist).
+- Dense data screens (tables, Gantt, budget) use virtualisation, sticky headers, column configuration, saved views, keyboard shortcuts.
+
+### 4.4 Themes
+Light + dark via class strategy and `prefers-color-scheme`; pre-paint inline script prevents flash; user override stored in guarded `localStorage`.
+
+### 4.5 Required component states
+default, hover, `focus-visible`, active, disabled, **loading (skeleton)**, error (retry), **empty (icon/illustration + explanation + call to action)**, and for AI-generated content: *draft / suggested / confirmed / rejected*.
+
+### 4.6 Accessibility
+Semantic landmarks, labelled inputs, aria, full keyboard navigation, Radix focus management, `alt` text, visible focus, status not by colour alone, reduced-motion support, screen-reader-friendly tables and charts (data table fallback).
+
+### 4.7 Motion (`motion`)
+Animate **only `transform` and `opacity`**; CSS transitions for simple hovers. Scroll-reveal (`whileInView`, `once`), stagger lists, damped springs for dialogs/menus/sheets, `layout`/`layoutId` for tab underline, kanban moves, reorders, shared transitions; `AnimatePresence` for exits; button/card micro-interactions (lift, `scale: 0.97` on press). Durations 150–300 ms UI, ≤ 600 ms large entrances; soft easing. **Respect `prefers-reduced-motion`** via a single `MotionConfig`/`useMotionPreference`. At most **one hero effect per screen**.
+
+### 4.8 Internationalisation
+Russian (default), Kazakh, English; ICU message format; locale-aware dates, numbers, currencies (KZT default, multi-currency supported), units (metric). No hard-coded country documents — see "Locale packs" in §5.17.
+
+---
+
+## 5. FUNCTIONAL MODULES (all in scope)
+
+Every module delivers: data model + migrations, service layer with policy checks, REST endpoints, OpenAPI docs, UI (list, detail, create/edit, empty/loading/error states), notifications, audit entries, search indexing, AI hooks where stated, tests. Statuses are **server-enforced state machines** with allowed transitions, required fields per transition, and full history.
+
+### 5.1 Identity
+Register (creates company + owner), login/logout/refresh, forgot/reset/change password, TOTP 2FA + recovery codes, invite by email link, session & device management, login alerts, OIDC SSO, optional passkeys, digital-signature adapter (see §3.5), account lockout/backoff, refresh-token rotation with reuse detection.
+
+### 5.2 Company, organisation, users
+- **Company card:** name, BIN (12-digit validation), legal & actual address, bank details, director, contacts, logo, currency, VAT/tax settings, timezone (default `Asia/Almaty`), country/locale pack, AI policy, data-residency note, official-source settings per metric (§6.3).
+- **Organisation:** departments tree, positions, teams, work calendars (working days/holidays per country).
+- **User card:** full name, email, phone, position, role(s), department, projects, status (`ACTIVE | INVITED | SUSPENDED | ARCHIVED`), photo (with consent flag), notification preferences, language.
+- Bulk invite via CSV, user import, deactivation with reassignment of open work.
+
+### 5.3 Role-aware dashboards
+Widgets are configurable per role and user; every KPI shows **value, as-of time, definition link, drill-down to records**; unknown values render "—".
+- **Director:** project count, active projects, projects at risk (by FACT/RULE/MODEL type), total budget, plan-vs-actual, profit (from §5.19 definitions), cash flow & gap warnings, overdue items, critical issues, procurement exposure, AI insights, **data-freshness panel**.
+- **Project Manager:** progress (§5.9 formula), schedule variance, tasks, overdue, budget, subcontractors, issues, risks, obligations at risk.
+- **Foreman/Master:** today's/week's tasks, open issues on my object, materials on site, crew, daily-report prompt, checklists due.
+- **PTO / Procurement / Warehouse / Accountant / HSE / HR:** role dashboards over their modules.
+- Command Center widget with Critical/Warning/Info counters (§5.26.6).
+
+### 5.4 Tender management and bid estimation
+- **Entity:** id, title, customer, number, source, published date, deadline, value, currency, address, description, responsible user, status, tags, competitors (optional), history.
+- **Status machine:** `NEW → ANALYSIS → DECISION → PREPARATION → SUBMITTED → WON | LOST` (+ explicit backward moves). `DECISION` stores a human decision (`PARTICIPATE | DECLINE`) with author, reason, date.
+- **Documents:** PDF, DOCX, XLSX, images, ZIP (safe extraction). Types: tender conditions, technical spec, estimate, contract draft, drawings, specifications. Processed by §5.5.
+- **AI Tender Analysis → Findings.** Extract requirements, deadlines, value, obligations, penalties, restrictions, qualification requirements, delivery/import dependencies. Each finding: `{kind, valueText, normalizedValue?, sourceDocumentId, documentVersion, page, quoteSnippet, extractionConfidenceLabel, status}`; `status: UNCONFIRMED → CONFIRMED | EDITED | REJECTED`. Critical kinds (deadline, value, penalty, obligation, qualification) **require human confirmation** before transfer to a project. Click-through opens the document at the quote. Conflicts between documents are flagged side by side.
+- **Tender Score (transparent, configurable):** a per-company **scoring model** = weighted criteria (e.g. deadline feasibility, penalty exposure, qualification match, import-dependency, customer history, region, contract size vs capacity, payment terms). Each criterion is computed by a **rule over confirmed findings and company data** (or marked `UNKNOWN` when inputs are missing), shows its inputs and weight, and the total shows **data completeness %**. If completeness is below a configurable threshold the score is shown as "insufficient data" with the list of missing inputs. The score is an *aid*, never a decision; the decision is always human. Model weights are versioned; each analysis stores the model version.
+- **Bid estimator (margin from real inputs):** estimate lines (work/resource, quantity, unit, unit cost, source), overheads, risk reserve, taxes, financing cost; import from XLSX/CSV and from the tender's estimate document with AI-assisted mapping + mandatory human review; unit-cost library per company (from past projects, §5.18). **Estimated margin = (bid price − estimated cost) / bid price** computed from these lines; AI may *suggest* line mappings and flag missing items but **never invents costs**. Versioned scenarios (base / optimistic / conservative) with side-by-side comparison.
+- **Readiness checklist** per tender (documents complete, deadline known, penalties reviewed, qualification attached, bank guarantee, signatures) with owners and due dates; deadline reminders.
+- **Tender → Project (`WON`)** and also direct creation (§5.6): transfers customer, contract data, value, dates, address, documents, **confirmed** findings (→ obligations §5.7), estimate (→ budget §5.18), key terms. **Idempotent** (idempotency key + unique constraint). Preview step lets the user deselect items to transfer.
+- Tender analytics: win rate, bid volume, margin vs result, reasons for loss, pipeline by status/customer.
+
+### 5.5 Document intelligence pipeline
+Async, persisted per-step status, retryable, visible in UI:
+`UPLOADED → VIRUS_SCAN (ClamAV adapter, or SKIPPED recorded honestly) → TEXT_EXTRACTION (PDF text, DOCX, XLSX, images) → OCR (pluggable engine, e.g. Tesseract adapter; Russian/Kazakh/English; scanned PDFs never fail silently) → CLASSIFICATION → METADATA_EXTRACTION → EMBEDDING + INDEXING → AI_ANALYSIS`.
+Chunking keeps page/section anchors for citations; tables are extracted structurally. Per-step timing and error telemetry; dead-letter queue with admin retry; re-processing when a new version arrives; older versions flagged `SUPERSEDED` in the index.
+
+### 5.6 Projects and structure
+- **Project card:** name, number, customer, contract link, value, budget, start/end, PM, address, coordinates (map), status (`PLANNING | ACTIVE | ON_HOLD | COMPLETED | CANCELLED`), progress, tags, project type.
+- **Creation paths:** from `WON` tender; from scratch; from an existing contract (enter or upload+extract+confirm); clone from template (structure, checklists, workflows).
+- **Configurable structure tree:** `Project → Object → Building → Floor → Zone → Room`; levels optional/renameable per project type; drag-reorder, keyboard accessible; bulk generate (e.g. "Block A × 12 floors").
+- Members with project-scoped roles; project settings (calendar, currency, data owners per area, freshness thresholds, official financial source).
+- Project hub tabs: Overview · Structure · Schedule · Tasks · Issues · Quality · Documents/Drawings · Contracts & Obligations · Procurement · Warehouse · Equipment · Subcontractors · Budget · Finance · PTO · Safety · Reports · AI.
+
+### 5.7 Contracts, obligations, AI legal
+- **Contract:** parties, type (customer, subcontract, supply, lease, other), value, currency, dates, subject, payment terms, penalties, warranties, retention, documents, amendments (additional agreements with effective dates), status, expiry.
+- **Controls:** expiration alerts, payment-term schedule generation, obligation tracking, penalty accrual calculator (formula taken from the confirmed clause; shown with inputs), amendment history and "effective terms at date X".
+- **Obligation** = confirmed requirement (from finding/clause or manual): text, type (deadline, delivery, quality, payment, penalty, warranty, reporting, other), due date, responsible user, source link (document + fragment), status (`OPEN | IN_PROGRESS | FULFILLED | AT_RISK | WAIVED`). Linked to tasks, work items, issues, documents, payments. Rule engine flags `AT_RISK` with the rule name and records used.
+- **AI Legal (assistive):** extracts obligations, deadlines, penalties, warranties, payment and termination terms, with quotes; compares contract versions; highlights unusual clauses against the company's playbook (configurable clause library). Always carries "does not replace a lawyer". Lawyer review workflow: assign, comment, approve.
+
+### 5.8 Documents, versioning, drawings, BIM
+- **Documents:** upload, preview, download (signed URL), versioning (author, date, comment, previous/current, status `CURRENT | SUPERSEDED`), comments with mentions, approval workflows (multi-step, parallel/sequential, with deadlines), archive, per-document permissions, tags, links to entities.
+- **Types:** contract, additional agreement, design, drawing, estimate, schedule, act, certificate, as-built, photo, other.
+- **Version compare:** text diff for extractable files; visual overlay diff for PDF drawings; AI "explain changes between v2 and v3" citing both versions. AI/RAG uses `CURRENT` by default.
+- **Drawings/plans:** PDF, images, CAD-derived files (DWG→PDF/DXF viewing via PDF/SVG conversion adapter), **BIM references** (IFC). Viewer: zoom/pan, layers, measure with scale calibration, **markup** (pen, shapes, text, cloud, arrow), **pins** linked to issue/task/room, create issue/task from pin, link drawing to structure node, version switching with pin carry-over. Markup stored as vector JSON, rendered over the PDF, exportable to PDF.
+- **BIM:** IFC upload, model tree, property inspector, element ↔ task/issue/work item linking, section/isolate (lazy-loaded viewer).
+- Photo library per project with location tags, timeline, before/after.
+
+### 5.9 Tasks
+Created manually or from issue, workflow, inspection, AI (confirmed), schedule, procurement, document, obligation. Fields: title, description, project, location, assignee(s), creator, priority, start, due, status (`TODO | IN_PROGRESS | BLOCKED | DONE | CANCELLED`), **weight**, dependencies (finish-to-start/start-to-start/finish-to-finish/start-to-finish with lag, **cycle detection**), attachments, checklist, comments, time tracking, origin, linked work item/obligation. Views: list, kanban, calendar, timeline. **Progress** = `Σ weight(DONE) / Σ weight(non-cancelled)`; the formula is shown in the UI; alternative progress methods (by quantity, by cost) are selectable per project (§6.3). Recurring tasks.
+
+### 5.10 Issues and quality management
+- **Issue:** title, description, project, object, location (structure + drawing pin), category, priority (`LOW | MEDIUM | HIGH | CRITICAL`), assignee, contractor, due date, photos/video, status history. Status: `OPEN → ASSIGNED → IN_PROGRESS → READY_FOR_REVIEW → RESOLVED → CLOSED`, plus `REJECTED`. **Assignee can set `RESOLVED`; `CLOSED` only by a different user with the verify permission; `CRITICAL` always needs a human verifier; reopen requires a comment; every transition stored.**
+- **AI issue from photo:** vision model suggests title, category, description, priority, responsible, deadline using photo + project context + location + previous issues; user edits and confirms. States limits: hidden works and full compliance cannot be judged from one photo.
+- **Quality workflow:** `Inspection → Defect → Task → Correction → Re-inspection → Closed`. Inspections from checklist templates; defects with severity; corrective actions with owners/deadlines; re-inspection scheduling; non-conformance reports; quality KPIs per contractor/zone.
+- Deterministic rule: `CRITICAL` issue → task for PM + notification to Director (later superseded by user-configurable workflows, §5.25, with this as the default seeded workflow).
+
+### 5.11 Checklists and daily reports
+- **Checklist templates:** concrete, rebar, masonry, roofing, facade, MEP, electrical, plumbing, finishing (editable library, per-company). Run items `{status, comment, photo, responsible}`; failed item → issue; sign-off by responsible (e-signature capable).
+- **Daily report:** date, object, weather (auto-filled from a weather provider adapter + manual override), staff by trade, contractors, work done (linked to work items/tasks), equipment, materials received/used, problems, downtime with reason codes, photos. AI **drafts narrative text** from structured fields; user edits and submits; immutable after submit except via amendment. Missing-report detection feeds freshness (§6.4).
+
+### 5.12 Schedule
+- WBS tree, activities linked to work items/tasks, dependencies with lags, constraints, milestones, calendars, **baselines** (multiple, frozen), planned vs actual, % complete, resources (labor/equipment) with histograms.
+- **CPM engine** (own, tested): forward/backward pass, total/free float, **critical path**, cycle detection, calendar-aware durations. Schedule variance (days and %), SPI-style indicators where cost data exists (labelled with definitions).
+- **Gantt** (own component): zoom levels, dependency arrows, baseline overlay, critical path highlight, drag to reschedule (with preview of downstream impact), virtualised for 10k+ rows, keyboard operable; table + Gantt split view; export PDF/PNG.
+- Import: XLSX/CSV, **MS Project XML**, Primavera XER (verify format docs); export XLSX and MS Project XML.
+- What-if scenarios (non-destructive copies) and delay analysis ("what moves if procurement item X slips 7 days").
+
+### 5.13 Subcontractors
+Card: company, BIN, contacts, contracts, projects, completed work, contract sums, payables, violations, delays, documents (licences, insurance, expiry alerts). **Rating = transparent weighted formula** over delay rate, defect rate/re-inspection failures, cost variance, issue count, payment discipline (weights configurable, inputs shown, completeness shown; no rating if insufficient data). Prequalification workflow, work-order/acts (КС-like per locale pack), external portal for subcontractor to see assigned tasks/issues, upload reports and as-built docs.
+
+### 5.14 Procurement and suppliers
+Chain: `Material Need → Request → Approval → RFQ → Supplier Selection → Purchase Order → Delivery → Warehouse`.
+- **Material request:** material, qty, unit, object, work item, required date, initiator, priority, attachments; created from tasks/schedule, mobile, or AI/warehouse rules.
+- **Approval:** configurable multi-level by amount/category (via §5.25).
+- **RFQ:** send to suppliers (email + supplier portal link), collect quotes, normalised comparison table (price, lead time, terms, rating), **AI-assisted comparison** with cited inputs; selection requires human approval with reason.
+- **PO:** lines, delivery schedule, partial deliveries, status, linked contract; delivery receiving creates warehouse movements and updates committed/actual (§5.18).
+- **Suppliers:** card (company, BIN, contacts, categories, price lists, delivery history, rating, lead times, delays), price-variance analytics.
+- **AI procurement:** from stock (§5.15), planned work (§5.12), historical consumption, deliveries and lead time → "possible shortage of C30 concrete in ~8 days" with the inputs, assumptions and data-completeness shown; offers to draft a request. Shortage logic is a **deterministic calculation** over planned consumption norms; the model only explains it. Missing consumption norms ⇒ "cannot estimate".
+
+### 5.15 Warehouse
+Materials catalogue (units, conversions, categories, norms), multiple warehouses/sites, **stock ledger (immutable movements)**: receiving, issuing (to work item/zone), transfer, write-off (with reason, approval), returns, inventory counts with variance posting. Each movement: user, date, qty, object, document, linked PO/work. Min/max levels → low-stock events. Valuation method configurable (FIFO / weighted average) with tests. Barcode/QR labels and scanning from mobile camera. Reservation against planned work.
+
+### 5.16 Equipment
+Card: type, make, model, number, owner (own/rented), assigned object, condition, engine hours, maintenance plan and history, repairs, documents, operator, cost per hour, utilisation. Maintenance schedule generation, due alerts, work orders. Rental contracts. **Telematics adapter interface** (GPS, fuel tracking) implemented with a documented generic ingestion API/webhook so providers can push data; predictive-maintenance rules (hours-based and anomaly-based) with visible thresholds.
+
+### 5.17 PTO (technical department) and as-built documentation
+- Registries: as-built documentation, acts (hidden works, acceptance, handover), journals (general works log, concrete, welding, etc.), schemes, certificates, passports, registries; status workflow with signatures.
+- **Locale packs (data-driven):** document templates, numbering rules, field sets and workflows per country/regulation. Ship a **Kazakhstan pack** (e.g. АВР and acts of hidden works as configured templates) and an **international/generic pack**; Russian-style КС-2/КС-3 forms available as an *optional pack*, never a hard-coded universal standard. Packs are versioned JSON/DOCX templates validated by schema; verify current form requirements before encoding them and mark pack version and legal-review status.
+- **Generation:** auto-fill from project data (works done, materials, certificates, dates), DOCX/PDF output, batch generation, completeness checks ("act of hidden works missing for slab B-2"), e-signature, ZIP handover package by structure node.
+- Completion-act workflow linked to quantities in daily reports and schedule (КС-style billing support): measured quantities → act → customer approval → receivable (§5.19).
+
+### 5.18 Budget, cost control, forecasting
+- **Hierarchy:** `Project → Section → Work → Resource`; types material / labor / equipment / subcontractor / overhead. Versioned budgets (baseline, revisions with approval; **changing a critical budget requires human approval**).
+- **Definitions (shown in UI):** *Budget* planned amount; *Committed* signed, **not yet recognised as actual**; *Actual* recognised cost from the authoritative source; *Exposure = Actual + Committed*; *Variance = Budget − Exposure*; *Forecast (EAC)* produced by a selectable, labelled method (e.g. `Actual + remaining budget`, `CPI-based` when earned-value data exists). Example display: Budget 100M · Committed 82M · Actual 71M · Forecast 108M · Variance +8M — computed, never typed.
+- Cost sources: purchase orders, warehouse issues, subcontractor acts, payments, manual entries, imports (CSV/XLSX, 1C). Reconciliation view between BuildOS and the official source with differences listed.
+- Unit-cost library built from closed projects feeds the bid estimator (§5.4).
+- AI finance insights (e.g. "at current burn this section exceeds budget by 6.8 %") appear only when the method's required inputs exist; the insight shows method and inputs.
+
+### 5.19 Finance (management layer) and cash flow
+Not a statutory accounting system; integrates with 1C and others (§5.28). Functions: income, expense, **payment register** (management record, **not a bank transfer**), invoices, receivables, payables, bank statement import (CSV/1C formats/MT940 where documented), payment calendar, approvals for payments (human only), P&L per project/company, budget links, retention and guarantees, currency handling.
+- **Cash flow:** planned inflows (completion acts, advances), planned outflows (POs, subcontractor acts, payroll, taxes if provided), commitments, balance, forecast; **cash-gap detection** = deterministic projection over dated items with stated assumptions; AI explains and proposes options (move payment, request advance) but never executes payments.
+- **Official-source per metric** and reconciliation rules (§6.3) so BuildOS and 1C never silently disagree.
+
+### 5.20 HR
+Employees, positions, departments, personal documents (with access control and consent), contracts, qualifications/certifications with expiry alerts, attendance (manual, QR/geofenced mobile check-in, import from turnstile systems via adapter), timesheets, vacations, sick leave, business trips, onboarding/offboarding checklists, org chart. Links to project assignments and safety training.
+
+### 5.21 Payroll (separate module)
+Pay components, rates, timesheet-based gross calculation, advances, deductions, payslips, payroll runs with approval, export to 1C/bank formats. **Statutory taxes and contributions come only from versioned, country-specific rule packs reviewed by an accountant**; if no verified pack is installed the module computes gross only and says so. Payroll data has its own strict permissions and audit.
+
+### 5.22 Safety (HSE)
+Safety inspections, training records and expiry, PPE issuance, violations, incidents (investigation workflow, root cause, corrective actions), work permits (hot work, heights, confined space) with approvals and validity windows, toolbox talks, safety KPIs (LTIFR etc., definitions shown). **Computer-vision adapter** (helmet/vest/restricted-zone detection) as a pluggable analysis step on photos/video: detections land in a **review queue** as *AI suggestions*; nothing becomes a violation without human confirmation.
+
+### 5.23 BI and analytics
+- Prebuilt reports: **Projects** (progress, delays, budget, profitability); **Procurement** (spend, supplier performance, price variance); **Construction** (productivity, completed work, issues); **Finance** (P&L, cash flow, receivables, payables); **Quality/HSE/HR/Equipment/Warehouse**.
+- Report builder (choose dataset, filters, group-by, measures, charts), saved/shared dashboards, scheduled email reports, export XLSX/CSV/PDF, drill-down to records, permission-aware (reports never leak rows the user cannot see).
+- Natural-language analytics ("show overdue tasks in Block B by assignee") translated to **validated, parameterised query specs** (never raw SQL from the model).
+- Product/business KPIs for the platform owner live in §5.30 (DAU/MAU, active projects, tasks/issues created, AI interactions, automation rate, MRR/ARR, churn…) plus construction KPIs (delay reduction, manual-work reduction, budget variance, reporting-time reduction) computed per company with before/after baselines.
+
+### 5.24 Notifications
+Channels: in-app (live), Web Push/mobile push, email, **Telegram bot**, **WhatsApp Business** (official Cloud API, template messages, opt-in tracking). Events: task assigned, deadline, overdue, approval requested, issue created/critical, procurement events, payment events, risk detected, AI alert, document uploaded, extraction ready, obligation at risk, permit expiring, certificate expiring. Per-user and per-project preferences, quiet hours, digest mode, deduplication, delivery log with retries. Channel adapters hidden until configured.
+
+### 5.25 Workflow engine and automation
+Configurable **without code changes**: `Event → Condition → Action`, plus approvals and timers.
+- **Triggers:** domain events (`TenderWon, ProjectCreated, TaskCreated, TaskOverdue, IssueCreated, IssueCritical, MaterialLow, PurchaseApproved, PaymentCreated, DocumentUploaded, ScheduleDelayed, RiskDetected, …`), schedules, webhooks.
+- **Conditions:** typed expression builder over entity fields (safe, sandboxed expression language with a documented grammar; no `eval`).
+- **Actions:** create task/issue/request, assign, notify, set field, start approval, call webhook, run AI draft, create risk, wait/timer.
+- **Visual builder** (React flow-style canvas built with own components or a vetted MIT library), versioning, enable/disable, **dry-run/simulation with sample event**, run history with per-step results, loop/recursion protection, idempotent execution, rate limits, per-workflow permissions, templates ("Critical issue → task for PM → notify Director → deadline 24 h"; "Stock < minimum → create material request → send for approval").
+- **AI-initiated workflows:** AI can propose or trigger only **whitelisted** workflows within its permission; any workflow step touching finance, legal, budget, quality closure, HR or contract terms is a **human-approval gate** enforced server-side.
+
+### 5.26 BuildOS AI layer
+
+**5.26.1 AI Gateway** — one module is the only code that talks to models. Interface: `generateText`, `generateStructured<T>` (Zod-validated), `analyzeImage`, `embed`, `transcribe` (voice notes, optional). Adapters: OpenAI, Anthropic, Google, OpenAI-compatible endpoints (open-source models), local models (Ollama/vLLM-style). Check each SDK's current docs and pin versions. Every call: timeout, retry with backoff, circuit breaker, token/size limits, cost metering per company, graceful UI failure state. A deterministic `mock` adapter exists for tests and the labelled demo mode only.
+
+**5.26.2 LLM orchestration** — a routing table (editable per company) picks model by task class: simple classification → inexpensive model; complex document analysis → advanced model; vision → vision model; sensitive document or `LOCAL_ONLY` policy → local/self-hosted model. Fallback chains, A/B routing, per-task prompt versions stored and logged. BuildOS must never depend on a single provider.
+
+**5.26.3 RAG with permission-aware retrieval** — pipeline: `user permissions → candidate set → hybrid retrieval (FTS + pgvector) → rerank → context assembly with source ids → model → answer with citations`. Sources: documents, contracts, drawings (text/markup), regulations, project records, instructions, historical data, company knowledge base (uploadable regulations and norms). Retrieval is restricted **before** the model sees anything: an accountant never gets legal documents they cannot open. Whole documents are never dumped into prompts. Answers cite document, **version**, page/fragment and date; they state when sources are insufficient, stale (freshness §6.4) or conflicting, and never infer "no event" from "no record".
+
+**5.26.4 AI memory (four levels)** — *Company context* (profile, policies, glossary, units, templates), *Project context* (structure, key obligations, current state summary, regenerated on events), *User context* (role, permissions, preferences, language), *Conversation context* (current thread with sliding summary). Memory items are visible and deletable by the user/admin; permission filtering applies to memory too.
+
+**5.26.5 AI actions** — levels `READ → ANALYZE → RECOMMEND → DRAFT → EXECUTE`. `EXECUTE` is limited to a **server-side whitelist of low-risk actions** (create task/request/draft, notify, add comment, link records), each requiring confirmation unless a company admin explicitly enables auto-execution for that action type. **AI must never autonomously:** sign legal documents, make payments, change a critical budget, close critical defects, dismiss or hire employees, change contract terms. For these: `AI recommendation → human approval (named, authorised user, bound to the specific change and its current version) → execution`. Approvals expire and are invalidated if the underlying data changes. Enforcement lives in the policy layer, not prompts.
+
+**5.26.6 Command Center** — dedicated page: Critical / Warning / Info counters with an event list. Each event: problem, cause/basis, impact, **type (`FACT | RULE | MODEL_ESTIMATE`)**, likelihood (only for model estimates, with method), recommendation, action buttons (confirmation dialog for record-creating actions), evidence links, status (`NEW | ACKNOWLEDGED | RESOLVED | DISMISSED`), assignee.
+
+**5.26.7 Insights and risk detection (proactive)** — scheduled and event-driven analyzers:
+- `FACT` – verifiable counts/records ("12 tasks past due", "no daily report for 3 working days").
+- `RULE` – deterministic rules over data, rule name and records shown ("facade works start in 5 days, linked material request not approved"; "concrete spend 17 % above plan" computed from §5.18).
+- `MODEL_ESTIMATE` – statistical/ML forecasts (delay, overrun, procurement demand, contractor reliability, schedule completion). **Gated:** a model is enabled for a company only when minimum data volume/quality thresholds are met, it has passed offline evaluation (§5.26.9), and it displays method, inputs, completeness and an uncertainty range; otherwise the UI states what data is missing. The LLM *explains* findings; detection never relies on LLM free text.
+- Also: anomalies, suspicious changes (large edits to budget/contract/schedule), document inconsistencies (value/date mismatches between contract, estimate, acts), missing materials.
+
+**5.26.8 Auditability** — table `ai_runs`: model/provider, prompt version, task type, timestamp, input source ids, retrieved record ids, output, schema-validation result, confidence label, user confirmation (who/when/what), action result, cost, latency. Admin UI for browsing/exporting. No opaque "magic AI".
+
+**5.26.9 Evaluation and safety**
+- **Evaluation harness** in repo: golden datasets (anonymised/synthetic contracts, tender packs, photos, Q&A with expected citations), metrics per task (field-level extraction precision/recall, citation correctness, refusal correctness on insufficient data, permission-leak tests), run in CI against the mock and optionally real providers; regressions block merges.
+- **Adversarial tests:** prompt injection inside documents, cross-tenant/permission leakage attempts, malformed model output, missing/stale/contradictory data, forbidden-action attempts.
+- **Prompt-injection hygiene:** document text is untrusted data, delimited, model told to ignore embedded instructions, outputs validated by Zod, model output never selects tools beyond the whitelist or tenants.
+- **Confidence labels** are calibrated against the evaluation set before being shown numerically; otherwise shown as coarse labels (High/Medium/Low/Unknown) with explanation.
+- Human feedback loop: thumbs/corrections on every AI output stored for evaluation (tenant-scoped, **not** used for training without recorded opt-in).
+
+**AI surfaces:** dashboard widget, project page panel, tender page, document viewer ("ask this document", compare versions), mobile assistant (text + voice note), Command Center, global ⌘K. Example intents: "What's happening on the project?", "Which tasks are overdue?", "Why is the project behind?" (answers with FACT/RULE evidence, not speculation), "Show critical risks", "Compare two contractors", "Analyse this contract", "Create a concrete request" (→ draft + confirmation). Natural-language search and analytics per §5.27/§5.23.
+
+### 5.27 Search
+Global search across projects, documents, tasks, issues, people, subcontractors, suppliers, materials, contracts, tenders, equipment, employees (permission-gated). `SearchProvider` implementations: Postgres (FTS + pgvector) default, OpenSearch adapter for scale. Typo tolerance, Russian/Kazakh/English stemming, filters, highlighting, recent items, saved searches. Natural-language mode ("find all overdue tasks for Block B") is translated to a validated structured query, then executed with the user's permissions.
+
+### 5.28 Integrations
+Framework: `IntegrationAdapter` interface (auth, capability declaration, sync, webhook handling, health), encrypted credential storage, per-company enable/disable, sync logs, retry/dead-letter, field mapping UI, conflict policy (official-source rules §6.3), contract tests from recorded fixtures. Public **REST API with API keys / OAuth2 client credentials**, **outbound webhooks** (signed, retried), event stream endpoint.
+Adapters to implement (verify current vendor docs for each; disabled until configured): **1C** (OData/HTTP services & file exchange: counterparties, nomenclature, documents, payments), **Bitrix24**, **SAP** (OData/IDoc-file exchange), **Revit/IFC** (IFC import; Revit via export), **Telegram**, **WhatsApp Business**, **ЭЦП/NCALayer**, **Kazakhstan state services** (as available via public APIs — procurement portals/tender feeds, business registry lookups by BIN), **banks** (statement import, payment-file export), **EDO** (e-document exchange providers), **MS Project/Primavera files**, **weather provider**, **calendar (ICS/Google/Microsoft)**, **email in-bound** (create task/issue from a mailbox).
+Tender feed importers: pluggable per source; new tenders arrive as `NEW` with documents queued for §5.5.
+
+### 5.29 Mobile (PWA + optional Capacitor wrap) and offline
+- Users: foreman, master, engineer, inspector, warehouse keeper, PTO on site. Actions: capture photo, create issue/task/report, execute tasks, view drawings, run checklists, create material requests, receive/issue stock by QR, check in, receive notifications, ask AI (text/voice).
+- Installable, safe-area aware, camera capture, background sync where supported, push notifications.
+- **Offline:** explicitly downloaded project packages (permission-scoped, encrypted at rest in IndexedDB where the platform allows, wiped on logout); outbox of mutations with client UUIDs + idempotency keys; **sync engine**: `Local data → Sync engine → Server`, retry with backoff, server-side dedupe, **conflict policy: field-level merge where safe, otherwise keep both versions in history — never destroy user data**; visible queue state and manual retry; large photo uploads are chunked/resumable. AI features show "needs connection" — never silently queued.
+- No separate mobile business logic: the same API.
+- Tests: offline create → app restart → reconnect → exactly one record; duplicate submit; failed/resumed upload; conflicting edits; permission revoked while offline.
+
+### 5.30 Platform administration, billing, product analytics
+- **Super-admin console** (separate app route, separate auth realm): tenants, plans, feature flags/entitlements, usage metering (users, projects, storage, AI tokens), health, job queues, audit.
+- **Subscription & billing:** plans, entitlements enforced server-side, usage metering, invoices; `PaymentProvider` interface with an implemented **invoice/manual** provider and a documented adapter slot for card gateways (hidden until configured). Unit of pricing is configurable (per company / per active project / per seat) — do not hard-code a price.
+- **Product analytics:** privacy-respecting internal event tracking (DAU/MAU, active projects, tasks/issues created, AI interactions, automation rate, time-to-first-value, onboarding funnel, data-freshness per tenant), dashboards for the platform owner; per-tenant implementation tracking (hours of onboarding, data-preparation time) to expose real cost-to-serve.
+- **Onboarding & implementation tooling:** guided setup wizard, import wizards (users, projects, schedule, budget, materials, suppliers, subcontractors), sample-data toggle, template libraries, "time to first useful action" tracking.
+
+---
+
+## 6. CROSS-CUTTING SPECIFICATIONS
+
+### 6.1 Domain events (transactional outbox)
+`TenderCreated, TenderStatusChanged, TenderWon, ProjectCreated, ObligationCreated, ObligationAtRisk, TaskCreated, TaskOverdue, IssueCreated, IssueCritical, InspectionFailed, MaterialLow, RequestApproved, PurchaseApproved, DeliveryReceived, PaymentCreated, InvoiceOverdue, DocumentUploaded, DocumentVersionAdded, ScheduleDelayed, BudgetRevised, RiskDetected, PermitExpiring, CertificateExpiring, WorkflowRunFailed`. Events drive workflows, notifications, search indexing, AI context refresh, analytics. Consumers are idempotent.
+
+### 6.2 Definitions glossary (must appear in UI help and code docs)
+- **Risk** – `FACT | RULE | MODEL_ESTIMATE`, always labelled.
+- **Budget / Committed / Actual / Exposure / Variance / Forecast** – §5.18.
+- **Payment** – management-register record, not a bank transfer.
+- **Progress** – per-project selectable method; default weighted by task weight (§5.9).
+- **RESOLVED vs CLOSED** – §5.10.
+- **Work (WorkItem)** – WBS element linking tasks, resources, contractors, documents, schedule activities, budget and costs.
+
+### 6.3 Metric Registry (one source of truth per metric)
+Table of metrics with: key, definition, formula, unit, owner (role), **official source** (BuildOS / 1C / other integration / manual), update rule, reconciliation rule, freshness threshold. Editable per company/project by admins. Every dashboard/report/AI answer resolves metrics through the registry and displays source + as-of time. Two sources for one metric trigger a **reconciliation task**, never a silent overwrite.
+
+### 6.4 Data ownership and freshness
+Per project, per area (obligations, tasks, field facts, schedule, budget, procurement, warehouse), a named data owner and update cadence. Deterministic staleness rules (e.g. `IN_PROGRESS` task untouched for N days, no daily report for N working days, schedule not updated for N days, stock not counted for N days). Staleness is shown on dashboards, passed into AI context ("data may be outdated"), and reduces completeness in scores/forecasts.
+
+### 6.5 Import/export
+Validated CSV/XLSX importers with row-level error reports and dry-run; exports to XLSX/CSV/PDF/DOCX; bulk operations are queued jobs with progress and cancel.
+
+### 6.6 Files
+Allow-listed types, size caps per plan, chunked/resumable upload, thumbnails/previews, EXIF stripping option, signed URLs, per-tenant quotas.
+
+---
+
+## 7. API
+
+- `/api/v1`, REST, JSON, Zod in/out, OpenAPI at `/api/docs`, SDK types generated into `packages/shared`.
+- **Unified error format** (RFC 7807-like): `{type, title, status, detail, code, requestId, errors?: [{path, message}]}`; correct 400/401/403/404/409/422/429/5xx; no stack traces to clients.
+- Cursor pagination everywhere, whitelisted filters/sorts, request-size limits, `Idempotency-Key` on creating/transfer endpoints, optimistic concurrency (`ETag`/version) on editable entities, rate limits per route class, field-level permission filtering in responses.
+- Resources: `/auth /users /companies /departments /roles /projects /structure /tenders /findings /estimates /contracts /obligations /documents /drawings /markups /models /tasks /issues /inspections /checklists /daily-reports /schedule /baselines /contractors /suppliers /materials /requests /rfqs /purchase-orders /warehouse /equipment /budget /payments /invoices /cash-flow /pto /hr /payroll /safety /reports /ai /workflows /notifications /search /integrations /webhooks /audit-log /sync /admin`.
+- WebSocket channel for live updates (tenant + permission scoped); future-ready for GraphQL (not required now) and event-driven integrations via webhooks.
+- `/healthz`, `/readyz`, `/metrics`.
+
+## 8. DATABASE
+
+Prisma + migrations for every schema change. Entity groups: **Identity** (Company, User, Membership, Role, Permission, Session, Device, Invitation, ApiKey); **Org** (Department, Position, Calendar); **Tenders** (Tender, TenderStatusHistory, Finding, ScoringModel, ScoreRun, Estimate, EstimateLine, Competitor); **Projects** (Project, StructureNode, WorkItem, EntityLink, ProjectMember); **Contracts** (Contract, Amendment, Obligation, PenaltyRule); **Documents** (Document, DocumentVersion, DocumentJob, Chunk, Embedding, Markup, Pin, Approval, ModelAsset); **Construction** (Task, TaskDependency, Issue, IssueHistory, Photo, Inspection, Defect, CorrectiveAction, ChecklistTemplate, ChecklistRun, DailyReport); **Schedule** (Activity, ActivityLink, Baseline, ResourceAssignment); **Subcontract/Supply** (Contractor, Supplier, Material, MaterialRequest, Rfq, Quote, PurchaseOrder, Delivery); **Warehouse** (Warehouse, StockMovement, InventoryCount, Reservation); **Equipment** (Equipment, MaintenancePlan, WorkOrder, EngineHours); **PTO** (PtoDocument, Journal, Act, LocalePack, TemplateVersion); **Money** (BudgetVersion, BudgetSection, BudgetLine, CostEntry, Invoice, PaymentRecord, CashFlowItem, BankStatementLine); **HR/Payroll** (Employee, Attendance, Timesheet, Leave, Trip, PayComponent, PayrollRun, Payslip); **HSE** (SafetyInspection, Training, PpeIssue, Violation, Incident, Permit); **Platform** (Workflow, WorkflowVersion, WorkflowRun, Risk, AiRun, AiMemory, Notification, DeliveryLog, Integration, IntegrationSyncLog, Webhook, AuditLog, IdempotencyKey, MetricDefinition, Plan, Subscription, UsageRecord, FeatureFlag, AnalyticsEvent).
+Indexes only for real query paths (tenant + status + dueDate, FTS GIN, HNSW/IVFFlat for vectors, FK lookups); no N+1 (deliberate `include`/joins, query-count assertions on list endpoints); archive/soft-delete for business records; money as `Decimal`/minor units, never float; all timestamps UTC with tenant timezone for display.
+
+## 9. PERFORMANCE
+Route-level code splitting; lazy-load PDF/BIM/Gantt/charts; virtualised long lists and Gantt; image thumbnails; debounced search; TanStack Query caching; Redis caching only where measured; DB pagination and limits; background jobs for heavy work; **memoize only after measurement**. Targets: Lighthouse mobile ≥ 90 (performance, accessibility) on key screens; API p95 < 300 ms for list/detail endpoints at seeded demo scale; Gantt smooth at 10k activities; k6 smoke test in repo. Report real measured numbers.
+
+## 10. TESTING
+- **Unit:** services, policies, state machines, CPM engine, cash-flow projection, budget/progress formulas, valuation (FIFO/avg), scoring rules, expression language, cycle detection, contrast checker.
+- **Integration (real Postgres/Redis):** auth, **tenant-isolation suite**, RBAC matrix per role, idempotency, document pipeline, sync/outbox, workflows (incl. loops), integrations contract tests, AI gateway with mock incl. malformed output and injected text, permission-leak tests for RAG/search/analytics.
+- **Component:** forms, status chips, dashboards (empty/loading/error), theme toggle, reduced motion, Gantt interactions.
+- **E2E (Playwright):** full demo walkthrough (§13) in light/dark at 390 px and 1440 px; offline scenario.
+- **AI evaluation** (§5.26.9) and k6 smoke load.
+- Tests assert behaviour; cover edge cases and error paths; each bug gets a regression test.
+
+## 11. DEVOPS
+Dockerfiles (multi-stage, non-root), Compose for dev and prod-like, Helm chart/K8s manifests (api, worker, web, redis, postgres via operator or external), CI (lint, types, tests, build, security audit, image scan), CD pipeline template, migrations run as a job, graceful shutdown, config via env, structured logs, traces, metrics, alert rule examples, backup/restore scripts and runbook, `.env.example` for each app, `README` with real commands.
+
+## 12. DELIVERY PHASES (all in scope; ordered by dependency; each phase fully working, tested and demoable)
+
+| Phase | Content |
+|---|---|
+| **P0 Foundation** | Monorepo, tooling, Docker, env validation, design tokens + theme, app shell, i18n, health/metrics, CI, observability, outbox/event bus, job queue |
+| **P1 Identity & Org** | Auth (2FA, SSO, sessions), company, departments, users, roles/permissions, audit log, RLS + isolation tests, external-user model |
+| **P2 Projects & Documents** | Projects, structure, WorkItem/EntityLink, storage adapters, documents, versions, approvals, FTS, previews, notifications (in-app/email/push) |
+| **P3 Document intelligence & AI Gateway** | Pipeline (scan/OCR/classify/index), gateway, routing, RAG, AI audit, evaluation harness, project Q&A |
+| **P4 Tenders & Contracts** | Tender machine, findings w/ citations, scoring model, bid estimator, WON→Project, contracts, obligations, AI legal |
+| **P5 Construction** | Tasks, issues, quality, checklists, daily reports, drawings viewer + markup, photo-to-issue, rules, kanban |
+| **P6 Mobile/Offline** | PWA, outbox/sync, QR scanning, push, Capacitor config, offline test suite |
+| **P7 Schedule** | WBS, CPM, baselines, Gantt, imports/exports, what-if |
+| **P8 Supply chain** | Subcontractors, procurement (requests→RFQ→PO), suppliers, warehouse, equipment, AI procurement |
+| **P9 Money** | Budget & cost control, finance layer, cash flow, 1C/bank adapters, reconciliation, metric registry enforcement |
+| **P10 PTO, HSE, HR, Payroll** | Locale packs & document generation, e-signature, safety, HR, payroll |
+| **P11 Automation & Intelligence** | Workflow engine/builder, Command Center, insights, risk detection, model estimates (gated), BI/report builder |
+| **P12 Platform & Integrations** | Remaining adapters (Bitrix24, SAP, EDO, state services…), WhatsApp/Telegram, OpenSearch, billing/admin console, onboarding tooling, product analytics, K8s/DR hardening |
+
+After each phase: update README + OpenAPI, run the full verification, and report.
+
+## 13. DEMO DATASET AND WALKTHROUGH
+Idempotent seed (dev/demo only; permanent "DEMO DATA" banner; figures flagged **illustrative**): **ЖК Alatau Residence**, ₸8.5 bn, 18 months; Block A (Floors 1–3), Block B; 100+ tasks, 20+ issues, 10+ documents (incl. tender pack with source-quotable text), 5 contractors, suppliers, materials and stock, equipment, schedule with baseline, budget with committed/actual, obligations, HR/HSE samples, rules-based risks.
+**Walkthrough that must work end-to-end:** open tender → upload documents → pipeline completes → findings with source quotes → confirm → score with completeness shown → estimate → mark WON → create project (obligations + budget carried over) → open project (schedule/critical path, tasks, issues, budget) → mobile photo → AI issue suggestion → confirm → issue becomes task → dashboard changes → low stock triggers request workflow → ask AI "What are the main risks right now?" → answer lists FACT/RULE risks with sources and data-freshness caveats.
+
+## 14. DEFINITION OF DONE (every task and every phase)
+- Compiles; type-check, lint, formatter pass; tests written and passing; build passes.
+- Errors, empty and loading states handled; permission checks present; audit entries written for critical actions.
+- UI verified at mobile and desktop widths, light and dark themes, with reduced motion.
+- No `any`, stubs, secrets, stray `console.log`; no feature claims without defined method (§1 honest-claims rules).
+- README lists real commands: **Install · Dev · Lint/Types · Tests · Build · Migrate/Seed**.
+- Final report: what changed, files, how verified, remaining risks.
+
+**Before the final answer ask:** *What breaks in production? What did I assume without verifying? Is there a simpler solution?* Fix what you find; report uncertainty honestly and never present unverified knowledge as fact.
