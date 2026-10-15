@@ -37,9 +37,9 @@ type ContextValue = {
 const Context = createContext<ContextValue | null>(null);
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { t, locale } = useI18n();
-  const { session, logout, demoAccess } = useAuth();
+  const { session, logout, demoAccess, demoMode, startDemo } = useAuth();
   const [data, setData] = useState(() =>
-    demoAccess ? createDemo() : emptyWorkspace(),
+    demoAccess ? createDemo(demoMode ?? 'full') : emptyWorkspace(),
   );
   const [demo, setDemoState] = useState(demoAccess);
   const [message, setMessage] = useState('');
@@ -146,6 +146,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }
   async function setDemo(value: boolean) {
+    if (value && demoAccess) {
+      startDemo('full');
+      return;
+    }
     if (!value && demoAccess) {
       await logout();
       return;

@@ -6,7 +6,7 @@ import {
   CheckCheck,
   ArrowUpRight,
 } from 'lucide-react';
-import { dateKey } from '@buildos/shared';
+import { dateKey, materialRequestLabel, unitLabel } from '@buildos/shared';
 import { useI18n } from '../i18n/context';
 import { useWorkspace } from '../data/workspace';
 import { AddButton, Empty, Status, Modal } from '../components/ui';
@@ -18,7 +18,7 @@ export function Registers({
   search: string;
   onCreate: () => void;
 }) {
-  const { t, date } = useI18n();
+  const { t, date, locale } = useI18n();
   const { data, update, notify, pending } = useWorkspace();
   const [filter, setFilter] = useState('all');
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -26,7 +26,9 @@ export function Registers({
   const requests = data.requests.filter(
     (item) =>
       (filter === 'all' || item.status === filter) &&
-      item.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
+      materialRequestLabel(item, locale)
+        .toLocaleLowerCase()
+        .includes(search.toLocaleLowerCase()),
   );
   async function remove() {
     if (!selected) return;
@@ -117,7 +119,7 @@ export function Registers({
                       <span className="table-resource-icon">
                         <Package size={18} />
                       </span>
-                      <strong>{item.name}</strong>
+                      <strong>{materialRequestLabel(item, locale)}</strong>
                     </div>
                   </td>
                   <td>
@@ -128,8 +130,14 @@ export function Registers({
                     }
                   </td>
                   <td className="tabular">
-                    {new Intl.NumberFormat('ru-KZ').format(item.quantity)}{' '}
-                    {item.unit}
+                    {new Intl.NumberFormat(
+                      locale === 'en'
+                        ? 'en-GB'
+                        : locale === 'kk'
+                          ? 'kk-KZ'
+                          : 'ru-KZ',
+                    ).format(item.quantity)}{' '}
+                    {unitLabel(item.unit, locale)}
                   </td>
                   <td>
                     <span
@@ -146,7 +154,7 @@ export function Registers({
                     <button
                       className="status-button"
                       disabled={pending}
-                      aria-label={`${item.status === 'received' ? t.requested : t.received}: ${item.name}`}
+                      aria-label={`${item.status === 'received' ? t.requested : t.received}: ${materialRequestLabel(item, locale)}`}
                       onClick={() =>
                         void update(
                           (draft) => {
@@ -170,7 +178,7 @@ export function Registers({
                   <td>
                     <button
                       className="icon-button delete-action"
-                      aria-label={`${t.delete}: ${item.name}`}
+                      aria-label={`${t.delete}: ${materialRequestLabel(item, locale)}`}
                       onClick={() => setDeleting(item.id)}
                     >
                       <Trash2 size={16} />
@@ -197,7 +205,7 @@ export function Registers({
           <span className="delete-illustration">
             <Trash2 size={25} />
           </span>
-          <h3>{selected?.name}</h3>
+          <h3>{selected ? materialRequestLabel(selected, locale) : ''}</h3>
           <p>{t.deleteRequestHint}</p>
           <div className="form-actions">
             <button className="button" onClick={() => setDeleting(null)}>

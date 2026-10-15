@@ -1,6 +1,19 @@
 import { expect, it } from 'vitest';
 import { createDemo } from '../../../apps/web/src/data/demo';
 import { localizeDemo } from '../../../apps/web/src/data/demo-copy';
+it('keeps empty and populated demos isolated', () => {
+  const empty = createDemo('empty');
+  const full = createDemo('full');
+  expect(
+    Object.values(empty)
+      .filter(Array.isArray)
+      .every((list) => list.length === 0),
+  ).toBe(true);
+  expect(full.projects).toHaveLength(3);
+  empty.projects.push({ ...full.projects[0]!, id: 'new' });
+  expect(createDemo('empty').projects).toHaveLength(0);
+  expect(createDemo('full').projects).toHaveLength(3);
+});
 it('starts demo content in Russian while preserving project names', () => {
   const data = createDemo();
   expect(data.tasks[0]?.title).toBe('Фундамент · блок А');

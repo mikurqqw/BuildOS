@@ -44,3 +44,9 @@ Browser QA used a separate temporary database schema and synthetic existing owne
 The public demo bypasses company login only for illustrative in-memory records, without creating an employee session. AuthGate regression tests cover API failure, no-session demo access and standalone demo without unavailable password fields. VITE_DEMO_ONLY disables session queries for the static deployment. The full API remains protected.
 
 Release checks: 28 tests, lint, types, formatting and the standalone demo production build passed. Clean browser reload resolved a development HMR context mismatch; standalone demo opened with no company session, and procurement status changed successfully without API access. GitHub main contains the source. Sites deployment succeeded at https://buildos-demo.activelynx16.chatgpt.site with owner-private access. Full Fastify/PostgreSQL deployment remains deferred by the user.
+
+## Materials, two demo modes and chart update (2026-10-16)
+
+33 tests passed, including catalog selection validation, custom names/units, translated canonical entries, compatibility and fresh empty/full demo snapshots. Browser QA on the standalone production demo covered empty login, first project creation, concrete B30 at 12.5 m3 with default unit, custom material and custom unit, EN translation without changing custom text, KK catalog/unit labels, switching to original populated demo, budget and schedule/deadline views. Desktop 1440px and mobile 390px light/dark layouts inspected; modal Escape and page overflow checked. Native SVG/bullet charts replace the Recharts budget chunk (approximately 390 kB to 8 kB for that lazy page). Independent static review reported no substantial defects.
+
+The initial demo build exposed stale shared output; build:demo now builds dependency packages first. Current Sites access was read as public and will be preserved, rather than resetting the owner's audience. Full company server deployment remains deferred.

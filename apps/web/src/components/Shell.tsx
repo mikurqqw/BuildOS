@@ -68,7 +68,7 @@ export function Shell({
 }) {
   const { t, locale, setLocale, theme, toggleTheme } = useI18n();
   const { data, demo, setDemo, storageBlocked } = useWorkspace();
-  const { session, logout } = useAuth();
+  const { session, logout, demoMode } = useAuth();
   const initials =
     session?.user.name
       .split(' ')
@@ -334,7 +334,13 @@ export function Shell({
         </header>
         {demo && (
           <div className="demo-banner">
-            <strong>{t.demo}</strong>
+            <strong>
+              {demoMode === 'empty'
+                ? t.demo1Title
+                : demoMode === 'full'
+                  ? t.demo2Title
+                  : t.demo}
+            </strong>
             <span>{t.demoHint}</span>
             <button onClick={() => setDemo(false)}>{t.exitDemo} →</button>
           </div>

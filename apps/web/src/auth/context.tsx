@@ -13,6 +13,7 @@ import {
   type AuthUser,
 } from '@buildos/shared';
 import { api, ApiError } from '../data/api';
+import type { DemoMode } from '../data/demo';
 type Session = { user: AuthUser; csrfToken: string };
 type AuthResult = {
   session: Session | null;
@@ -21,8 +22,9 @@ type AuthResult = {
 };
 type AuthState = AuthResult & {
   demoAccess: boolean;
+  demoMode: DemoMode | null;
   demoOnly: boolean;
-  startDemo: () => void;
+  startDemo: (mode: DemoMode) => void;
   loading: boolean;
   error: string;
   refresh: () => Promise<void>;
@@ -53,7 +55,8 @@ async function fetchAuth(): Promise<AuthResult> {
   }
 }
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [demoAccess, setDemoAccess] = useState(false);
+  const [demoMode, setDemoMode] = useState<DemoMode | null>(null);
+  const demoAccess = demoMode !== null;
   const demoOnly = import.meta.env.VITE_DEMO_ONLY === 'true';
   const client = useQueryClient();
   const query = useQuery({
@@ -93,7 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
   async function logout() {
     if (demoAccess) {
-      setDemoAccess(false);
+      setDemoMode(null);
       return;
     }
     if (!state.session) return;
@@ -111,8 +114,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         ...state,
         demoAccess,
+        demoMode,
         demoOnly,
-        startDemo: () => setDemoAccess(true),
+        startDemo: (mode) => {
+          void client.cancelQueries({ queryKey });
+          setDemoMode(mode);
+        },
         loading:
           !demoOnly &&
           !demoAccess &&

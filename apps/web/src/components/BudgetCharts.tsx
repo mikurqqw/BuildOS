@@ -1,16 +1,4 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
-import { Wallet, ArrowUpRight } from 'lucide-react';
+import { Wallet, ArrowUpRight, CircleCheck, CircleDashed } from 'lucide-react';
 import { useI18n } from '../i18n/context';
 import { budgetTotals } from '@buildos/shared';
 type Totals = ReturnType<typeof budgetTotals>;
@@ -18,164 +6,170 @@ export function BudgetCharts({
   chart,
   totals,
 }: {
-  chart: ({ name: string } & Totals)[];
+  chart: ({ id: string; name: string } & Totals)[];
   totals: Totals;
 }) {
   const { t, money, locale } = useI18n();
-  const compact = (value: number) =>
-    new Intl.NumberFormat(locale === 'en' ? 'en-GB' : 'ru-KZ', {
-      notation: 'compact',
-      maximumFractionDigits: 1,
-    }).format(value);
-  const data = [
-    { name: t.actual, value: totals.actual, color: 'var(--accent)' },
-    { name: t.committed, value: totals.committed, color: 'var(--chart-teal)' },
-    {
-      name: t.budgetAvailable,
-      value: Math.max(0, totals.variance),
-      color: 'var(--chart-track)',
-    },
-  ].filter((item) => item.value > 0);
+  const maximum = Math.max(
+    1,
+    ...chart.map((item) => Math.max(item.planned, item.exposure)),
+  );
+  const denominator = Math.max(totals.planned, totals.exposure, 1);
   const usage =
     totals.planned > 0
       ? Math.round((totals.exposure / totals.planned) * 100)
       : null;
+  const actualArc = (totals.actual / denominator) * 78;
+  const committedArc = (totals.committed / denominator) * 78;
+  const compact = (value: number) =>
+    new Intl.NumberFormat(
+      locale === 'en' ? 'en-GB' : locale === 'kk' ? 'kk-KZ' : 'ru-KZ',
+      { notation: 'compact', maximumFractionDigits: 1 },
+    ).format(value);
   return (
-    <div className="budget-chart-grid">
-      <section className="panel budget-comparison">
-        <div className="chart-heading">
+    <div className="budget-studio">
+      <section className="panel budget-projects-card">
+        <div className="budget-card-heading">
           <div>
-            <span className="eyebrow">
-              KZT / {t.budgetControl.toLocaleUpperCase()}
-            </span>
+            <span className="eyebrow">{t.budgetControl}</span>
             <h2>{t.budgetCompare}</h2>
-            <p>{t.budgetCompareHint}</p>
+            <p>{t.budgetScale}</p>
           </div>
           <span className="chart-heading-icon">
             <Wallet size={20} />
           </span>
         </div>
-        <div className="chart-key">
-          {[
-            { name: t.planned, color: 'var(--chart-plan)' },
-            { name: t.actual, color: 'var(--accent)' },
-            { name: t.committed, color: 'var(--chart-teal)' },
-          ].map((item) => (
-            <span key={item.name}>
-              <i style={{ background: item.color }} />
-              {item.name}
-            </span>
+        <div className="budget-comparison-key">
+          <span>
+            <i className="plan-key" />
+            {t.planned}
+          </span>
+          <span>
+            <i className="actual-key" />
+            {t.actual}
+          </span>
+          <span>
+            <i className="commit-key" />
+            {t.committed}
+          </span>
+          <small>KZT</small>
+        </div>
+        <div className="budget-project-plots">
+          {chart.map((item, index) => {
+            const percent = item.planned
+              ? Math.round((item.exposure / item.planned) * 100)
+              : null;
+            return (
+              <article className="budget-project-plot" key={item.id}>
+                <header>
+                  <span
+                    className={`budget-project-number project-color-${index % 3}`}
+                  >
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div>
+                    <h3>{item.name}</h3>
+                    <span>
+                      {t.planned}: <strong>{money(item.planned)}</strong>
+                    </span>
+                  </div>
+                  <span
+                    className={`budget-use-chip ${percent !== null && percent > 100 ? 'over' : ''}`}
+                  >
+                    {percent === null ? '—' : `${percent}%`}
+                    <small>{t.budgetProjectUsage}</small>
+                  </span>
+                </header>
+                <div
+                  className="budget-bullet-plot"
+                  role="img"
+                  aria-label={`${item.name}: ${t.planned} ${money(item.planned)}, ${t.actual} ${money(item.actual)}, ${t.committed} ${money(item.committed)}`}
+                >
+                  <div className="budget-scale-grid" aria-hidden="true">
+                    {[0, 25, 50, 75, 100].map((value) => (
+                      <i key={value} style={{ left: `${value}%` }} />
+                    ))}
+                  </div>
+                  <div className="budget-plan-rail">
+                    <span
+                      style={{ width: `${(item.planned / maximum) * 100}%` }}
+                    />
+                  </div>
+                  <div className="budget-spend-rail">
+                    <span
+                      className="actual"
+                      style={{ width: `${(item.actual / maximum) * 100}%` }}
+                    />
+                    <span
+                      className="committed"
+                      style={{ width: `${(item.committed / maximum) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <footer>
+                  <span>{t.budgetUsedAmount}</span>
+                  <strong>{money(item.exposure)}</strong>
+                </footer>
+              </article>
+            );
+          })}
+        </div>
+        <div className="budget-scale-labels" aria-hidden="true">
+          {[0, 0.25, 0.5, 0.75, 1].map((value) => (
+            <span key={value}>{compact(maximum * value)}</span>
           ))}
         </div>
-        <div
-          className="budget-horizontal-chart"
-          style={{ height: Math.max(240, chart.length * 84 + 45) }}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chart}
-              layout="vertical"
-              barGap={5}
-              barSize={11}
-              margin={{ top: 8, right: 24, bottom: 0, left: 0 }}
-            >
-              <CartesianGrid
-                horizontal={false}
-                stroke="var(--border)"
-                strokeDasharray="3 5"
-              />
-              <XAxis
-                type="number"
-                tickFormatter={(value) => compact(Number(value))}
-                axisLine={false}
-                tickLine={false}
-                tick={{ fill: 'var(--text-muted)', fontSize: 10 }}
-                tickMargin={12}
-              />
-              <YAxis
-                type="category"
-                dataKey="name"
-                width={140}
-                tickLine={false}
-                axisLine={false}
-                tick={{ fill: 'var(--text)', fontSize: 11 }}
-                tickFormatter={(value) =>
-                  String(value).length > 23
-                    ? String(value).slice(0, 21) + '…'
-                    : String(value)
-                }
-              />
-              <Tooltip
-                cursor={{ fill: 'var(--accent-soft)', opacity: 0.3 }}
-                formatter={(value) => money(Number(value))}
-                contentStyle={{
-                  background: 'var(--surface)',
-                  color: 'var(--text)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 12,
-                  padding: '12px 16px',
-                  boxShadow: 'var(--shadow)',
-                }}
-              />
-              <Bar
-                dataKey="planned"
-                name={t.planned}
-                fill="var(--chart-plan)"
-                radius={[0, 5, 5, 0]}
-                isAnimationActive={false}
-              />
-              <Bar
-                dataKey="actual"
-                stackId="exposure"
-                name={t.actual}
-                fill="var(--accent)"
-                radius={[0, 0, 0, 0]}
-                isAnimationActive={false}
-              />
-              <Bar
-                dataKey="committed"
-                stackId="exposure"
-                name={t.committed}
-                fill="var(--chart-teal)"
-                radius={[0, 5, 5, 0]}
-                isAnimationActive={false}
-              />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
       </section>
-      <section className="panel budget-allocation">
-        <div className="chart-heading">
+      <section className="panel budget-health-card">
+        <div className="budget-card-heading">
           <div>
-            <span className="eyebrow">
-              {t.costStructure.toLocaleUpperCase()}
-            </span>
+            <span className="eyebrow">{t.costStructure}</span>
             <h2>{t.budgetAllocation}</h2>
           </div>
-          <ArrowUpRight size={19} className="muted" />
+          <ArrowUpRight size={19} />
         </div>
-        <div className="budget-donut">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                innerRadius="74%"
-                outerRadius="94%"
-                startAngle={90}
-                endAngle={-270}
-                paddingAngle={data.length > 1 ? 3 : 0}
-                stroke="none"
-                cornerRadius={6}
-                isAnimationActive={false}
-              >
-                {data.map((item) => (
-                  <Cell key={item.name} fill={item.color} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="donut-center">
+        <div className="budget-orbit">
+          <svg
+            viewBox="0 0 240 210"
+            role="img"
+            aria-label={`${t.budgetUsage}: ${usage === null ? '—' : `${usage}%`}`}
+          >
+            <defs>
+              <linearGradient id="budget-arc" x1="0" y1="0" x2="1" y2="1">
+                <stop stopColor="var(--accent)" />
+                <stop offset="1" stopColor="var(--chart-indigo)" />
+              </linearGradient>
+            </defs>
+            <g transform="rotate(129.6 120 105)" fill="none" strokeWidth="15">
+              <circle
+                cx="120"
+                cy="105"
+                r="80"
+                stroke="var(--chart-track)"
+                pathLength="100"
+                strokeDasharray="78 100"
+                strokeLinecap="round"
+              />
+              <circle
+                cx="120"
+                cy="105"
+                r="80"
+                stroke="url(#budget-arc)"
+                pathLength="100"
+                strokeDasharray={`${actualArc} 100`}
+              />
+              <circle
+                cx="120"
+                cy="105"
+                r="80"
+                stroke="var(--chart-teal)"
+                pathLength="100"
+                strokeDasharray={`${committedArc} 100`}
+                strokeDashoffset={-actualArc}
+              />
+            </g>
+          </svg>
+          <div>
             <span>{t.budgetUsage}</span>
             <strong
               className={usage !== null && usage > 100 ? 'danger-text' : ''}
@@ -185,19 +179,26 @@ export function BudgetCharts({
             <small>{t.exposure}</small>
           </div>
         </div>
-        <div className="allocation-legend">
+        <div
+          className={`budget-health-note ${totals.variance < 0 ? 'over' : ''}`}
+        >
+          {totals.variance < 0 ? (
+            <CircleDashed size={17} />
+          ) : (
+            <CircleCheck size={17} />
+          )}
+          <span>
+            {totals.variance < 0 ? t.budgetOverrun : t.budgetAvailable}
+            <strong>{money(Math.abs(totals.variance))}</strong>
+          </span>
+        </div>
+        <div className="budget-health-breakdown">
           {[
             { label: t.actual, value: totals.actual, color: 'var(--accent)' },
             {
               label: t.committed,
               value: totals.committed,
               color: 'var(--chart-teal)',
-            },
-            {
-              label: totals.variance < 0 ? t.budgetOverrun : t.budgetFree,
-              value: Math.abs(totals.variance),
-              color:
-                totals.variance < 0 ? 'var(--signal)' : 'var(--chart-track)',
             },
           ].map((item) => (
             <div key={item.label}>
@@ -209,6 +210,10 @@ export function BudgetCharts({
             </div>
           ))}
         </div>
+        <footer className="budget-health-total">
+          <span>{t.budgetPlanTotal}</span>
+          <strong>{money(totals.planned)}</strong>
+        </footer>
       </section>
     </div>
   );

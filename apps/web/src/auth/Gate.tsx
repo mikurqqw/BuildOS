@@ -90,23 +90,38 @@ export function AuthGate({ children }: { children: ReactNode }) {
           </button>
         </header>
         <div className="auth-form-wrap">
-          <div className="auth-demo-entry">
-            <button
-              type="button"
-              className={`button ${auth.demoOnly ? 'primary' : ''}`}
-              onClick={auth.startDemo}
-            >
-              <ArrowRight size={17} />
-              {t.demoSignIn}
-            </button>
-            <p>{t.publicDemoHint}</p>
-          </div>
-          {auth.demoOnly ? (
-            <>
+          {auth.demoOnly && (
+            <div className="demo-entry-heading">
               <span className="eyebrow">BUILDOS / DEMO</span>
               <h2>{t.demoWelcome}</h2>
-            </>
-          ) : auth.loading ? (
+            </div>
+          )}
+          <div className="auth-demo-entry">
+            <span className="eyebrow">{t.chooseDemo}</span>
+            <div className="demo-entry-options">
+              {(['empty', 'full'] as const).map((mode, index) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className="demo-entry-card"
+                  onClick={() => auth.startDemo(mode)}
+                >
+                  <span className="demo-entry-number">0{index + 1}</span>
+                  <span>
+                    <strong>
+                      {mode === 'empty' ? t.demo1Title : t.demo2Title}
+                    </strong>
+                    <small>
+                      {mode === 'empty' ? t.demo1Hint : t.demo2Hint}
+                    </small>
+                  </span>
+                  <ArrowRight size={18} />
+                </button>
+              ))}
+            </div>
+            <p>{t.publicDemoHint}</p>
+          </div>
+          {auth.demoOnly ? null : auth.loading ? (
             <div className="auth-loading" role="status">
               <LoaderCircle className="spin" size={28} />
               <p>{t.checkingSession}</p>

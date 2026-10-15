@@ -37,7 +37,8 @@ describe('public demo entry', () => {
         <span>Private content</span>
       </AuthGate>,
     );
-    expect(html).toContain('Войти в демо');
+    expect(html).toContain('Демо 1 — пустое');
+    expect(html).toContain('Демо 2 — с примерами');
     expect(html).not.toContain('type="password"');
     expect(html).not.toContain('Private content');
   });
@@ -50,7 +51,7 @@ describe('public demo entry', () => {
           <span>Private content</span>
         </AuthGate>,
       ),
-    ).toContain('Войти в демо');
+    ).toContain('Демо 1 — пустое');
   });
   it('opens the illustrative workspace without inventing an employee session', () => {
     vi.stubGlobal('location', { search: '' });

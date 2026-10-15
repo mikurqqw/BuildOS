@@ -8,11 +8,13 @@ import {
   budgetLineSchema,
   memberSchema,
   requestSchema,
+  resolveMaterialSelection,
   type Project,
 } from '@buildos/shared';
 import { useWorkspace } from '../data/workspace';
 import { useI18n } from '../i18n/context';
 import { Modal } from './ui';
+import { MaterialFields } from './MaterialFields';
 import type { Messages } from '../i18n/ru';
 export type FormKind =
   'project' | 'task' | 'issue' | 'budget' | 'member' | 'request';
@@ -42,6 +44,7 @@ export function RecordForm({
   const [error, setError] = useState('');
   const {
     register,
+    setValue,
     handleSubmit,
     formState: { isSubmitting },
   } = useForm<Record<string, string>>();
@@ -158,21 +161,7 @@ export function RecordForm({
       { name: 'email', label: 'email', type: 'email' },
       { name: 'phone', label: 'phone', type: 'tel' },
     ],
-    request: [
-      projectField,
-      { name: 'name', label: 'material', required: true },
-      {
-        name: 'quantity',
-        label: 'quantity',
-        type: 'number',
-        min: '0.001',
-        step: 'any',
-        value: '1',
-        required: true,
-      },
-      { name: 'unit', label: 'unit', required: true },
-      due,
-    ],
+    request: [projectField, due],
   };
   const titles = {
     project: editing ? t.editProject : t.newProject,
@@ -263,6 +252,14 @@ export function RecordForm({
       );
     }
     if (kind === 'request') {
+      try {
+        Object.assign(raw, resolveMaterialSelection(values), {
+          quantity: Number(values.quantity),
+        });
+      } catch {
+        setError(t.validation);
+        return;
+      }
       const parsed = requestSchema.safeParse({ ...raw, status: 'requested' });
       if (!parsed.success) {
         setError(t.validation);
@@ -321,6 +318,9 @@ export function RecordForm({
           </label>
         ))}
         {kind === 'member' && <p className="form-hint">{t.contactOnly}</p>}
+        {kind === 'request' && (
+          <MaterialFields register={register} setValue={setValue} />
+        )}
         {kind === 'issue' && <p className="form-hint">{t.issueHint}</p>}
         {error && (
           <p className="form-error" role="alert">

@@ -7,6 +7,7 @@ import {
   CheckCheck,
   Flag,
   Clock3,
+  ListChecks,
 } from 'lucide-react';
 import { createTimeline, dateKey, progress } from '@buildos/shared';
 import { useWorkspace } from '../data/workspace';
@@ -18,6 +19,7 @@ export function Schedule() {
   const [project, setProject] = useState('all');
   const [quarters, setQuarters] = useState(true);
   const [expanded, setExpanded] = useState<string[]>([]);
+  const [view, setView] = useState<'timeline' | 'deadlines'>('timeline');
   const projects = data.projects.filter(
     (item) => project === 'all' || item.id === project,
   );
@@ -32,6 +34,9 @@ export function Schedule() {
     )
     .sort((a, b) => a.due.localeCompare(b.due));
   const today = calendar?.position(dateKey()) ?? -1;
+  const unfinished = selectedTasks
+    .filter((task) => !['DONE', 'CANCELLED'].includes(task.status))
+    .sort((a, b) => a.due.localeCompare(b.due));
   return (
     <>
       <div className="page-heading">
@@ -73,13 +78,34 @@ export function Schedule() {
           </div>
         ))}
       </div>
+      <div className="schedule-view-switch">
+        <div className="segmented">
+          <button
+            className={view === 'timeline' ? 'selected' : ''}
+            aria-pressed={view === 'timeline'}
+            onClick={() => setView('timeline')}
+          >
+            <CalendarDays size={15} />
+            {t.calendarView}
+          </button>
+          <button
+            className={view === 'deadlines' ? 'selected' : ''}
+            aria-pressed={view === 'deadlines'}
+            onClick={() => setView('deadlines')}
+          >
+            <ListChecks size={15} />
+            {t.deadlineView}
+          </button>
+        </div>
+        <span>{view === 'timeline' ? t.timelineHint : t.deadlineHint}</span>
+      </div>
       <section className="panel gantt-panel">
         <div className="gantt-toolbar">
           <div>
             <span className="eyebrow">
               {t.projectDates.toLocaleUpperCase()}
             </span>
-            <h2>{t.projectTimeline}</h2>
+            <h2>{view === 'timeline' ? t.projectTimeline : t.deadlineView}</h2>
           </div>
           <div className="gantt-controls">
             <select
@@ -94,24 +120,68 @@ export function Schedule() {
                 </option>
               ))}
             </select>
-            <div className="segmented">
-              <button
-                className={!quarters ? 'selected' : ''}
-                onClick={() => setQuarters(false)}
-              >
-                {t.months}
-              </button>
-              <button
-                className={quarters ? 'selected' : ''}
-                onClick={() => setQuarters(true)}
-              >
-                {t.quarters}
-              </button>
-            </div>
+            {view === 'timeline' && (
+              <div className="segmented">
+                <button
+                  className={!quarters ? 'selected' : ''}
+                  onClick={() => setQuarters(false)}
+                >
+                  {t.months}
+                </button>
+                <button
+                  className={quarters ? 'selected' : ''}
+                  onClick={() => setQuarters(true)}
+                >
+                  {t.quarters}
+                </button>
+              </div>
+            )}
           </div>
         </div>
         {!calendar ? (
           <Empty hint={t.scheduleEmpty} />
+        ) : view === 'deadlines' ? (
+          <div className="deadline-agenda">
+            {unfinished.length === 0 ? (
+              <Empty hint={t.noUpcomingTasks} />
+            ) : (
+              <>
+                <div className="deadline-agenda-count">
+                  {t.deadlineCount}: <strong>{unfinished.length}</strong>
+                </div>
+                {unfinished.slice(0, 40).map((task) => {
+                  const parent = projects.find(
+                    (item) => item.id === task.projectId,
+                  );
+                  const overdue = task.due < dateKey();
+                  return (
+                    <Link
+                      to={`/projects/${task.projectId}`}
+                      key={task.id}
+                      className={`deadline-agenda-item ${overdue ? 'overdue' : ''}`}
+                    >
+                      <div className="deadline-date">
+                        <strong>{task.due.slice(-2)}</strong>
+                        <span>{date(task.due).replace(/^\d+\s/, '')}</span>
+                      </div>
+                      <div className="deadline-agenda-copy">
+                        <span>{parent?.name}</span>
+                        <strong>{task.title}</strong>
+                        <small>{task.assignee || '—'}</small>
+                      </div>
+                      <Status value={overdue ? 'overdue' : task.status} />
+                      <ArrowUpRight size={18} />
+                    </Link>
+                  );
+                })}
+                {unfinished.length > 40 && (
+                  <Link to="/tasks" className="text-button">
+                    {t.allTasks} ({unfinished.length})<ArrowUpRight size={14} />
+                  </Link>
+                )}
+              </>
+            )}
+          </div>
         ) : (
           <>
             <div className="gantt-scroll">
@@ -185,6 +255,9 @@ export function Schedule() {
                               {date(item.start)} — {date(item.end)}
                             </span>
                             <Status value={item.status} />
+                            <div className="gantt-project-mini-progress">
+                              <span style={{ width: `${value ?? 0}%` }} />
+                            </div>
                           </div>
                         </div>
                         <div className="gantt-canvas">

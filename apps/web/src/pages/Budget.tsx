@@ -28,6 +28,7 @@ export default function Budget({
         lines.some((line) => line.projectId === item.id),
     )
     .map((item) => ({
+      id: item.id,
       name: item.name,
       ...budgetTotals(lines.filter((line) => line.projectId === item.id)),
     }));

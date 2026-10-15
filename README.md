@@ -4,9 +4,9 @@ MVP for AlmatyHUB.
 
 ## Hosted demo
 
-Demo: https://buildos-demo.activelynx16.chatgpt.site (owner-private Sites hosting). Source: https://github.com/mikurqqw/BuildOS. The full API/database is not deployed.
+Demo: https://buildos-demo.activelynx16.chatgpt.site (Sites hosting; current audience is preserved). Source: https://github.com/mikurqqw/BuildOS. The full API/database is not deployed.
 
-The sign-in screen offers a password-free demo. It uses an illustrative in-memory workspace and never grants company access. Reload resets its records. `pnpm build:demo` builds a standalone demo in `dist/` with employee login disabled and no API calls. The full server-backed development build retains employee authentication. Demo files use browser storage and are not uploaded to a server.
+The sign-in screen offers Demo 1 (empty) and Demo 2 (populated), both password-free. It uses an illustrative in-memory workspace and never grants company access. Reload resets its records. `pnpm build:demo` builds a standalone demo in `dist/` with employee login disabled and no API calls. The full server-backed development build retains employee authentication. Demo files use browser storage and are not uploaded to a server.
 
 Construction workspace for contractors in Kazakhstan. Requested stack: React 19 / Vite / strict TypeScript / Tailwind / Fastify 5 / PostgreSQL / Prisma / pnpm / Turbo. Russian and light theme are defaults; Kazakh, English and dark theme are available.
 
@@ -16,7 +16,7 @@ An employee login protects the whole workspace. The first owner creates the comp
 
 Projects, tasks/board, issues, budgets, procurement and document metadata persist in a company PostgreSQL snapshot with optimistic version checks. Files are tenant-scoped database blobs (20 MB maximum), authenticated on download. File uploads and workspace updates are separate operations. No normalized enterprise business schema or full per-module role matrix is claimed.
 
-Budget charts compare plan, actual and committed amounts. The schedule shows project spans, progress and task deadlines with month/quarter views. Procurement requests support status changes and confirmed deletion. Responsive motion respects reduced-motion preferences.
+Budget charts compare plan, actual and committed amounts. The schedule shows project spans, progress and task deadlines with month/quarter views, plus an ordered deadline list. Budget diagrams use an accessible native SVG gauge and project comparison bars with a common monetary scale. Procurement requests support status changes and confirmed deletion. The searchable catalog includes 81 construction materials across 13 categories, material specifications and 15 units, plus custom material/specification/unit entry. Catalog labels follow RU/KK/EN; custom text is preserved. Responsive motion respects reduced-motion preferences.
 
 The optional demo is isolated from real records. Demo examples and interface have RU/KK/EN translations; project names remain unchanged. Arbitrary user text is preserved and is not automatically translated. No AI credentials, paid translation service or external integration is connected.
 

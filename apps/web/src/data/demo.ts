@@ -1,7 +1,9 @@
 import { localizeDemo } from './demo-copy';
 import { emptyWorkspace, dateKey, type Workspace } from '@buildos/shared';
-export function createDemo(): Workspace {
+export type DemoMode = 'empty' | 'full';
+export function createDemo(mode: DemoMode = 'full'): Workspace {
   const workspace = emptyWorkspace();
+  if (mode === 'empty') return workspace;
   const today = new Date();
   const day = (offset: number) => {
     const date = new Date(today);

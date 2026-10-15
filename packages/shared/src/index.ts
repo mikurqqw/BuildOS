@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export * from './auth.js';
+export * from './materials.js';
 export { createTimeline } from './timeline.js';
 export { applyChange, fileKey, createScopeGuard } from './local-state.js';
 const id = z
@@ -76,6 +77,8 @@ export const requestSchema = z.object({
   id: id.default(() => crypto.randomUUID()),
   projectId: id,
   name,
+  materialId: z.string().max(80).optional(),
+  specification: z.string().max(120).optional(),
   quantity: z.number().positive().max(1e9),
   unit: z.string().trim().min(1).max(30),
   due: z.iso.date(),
