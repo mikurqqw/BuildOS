@@ -61,6 +61,7 @@ export function createDemo(mode: DemoMode = 'full'): Workspace {
     priority: i % 4 === 0 ? 'HIGH' : 'MEDIUM',
     status: i < 66 ? 'DONE' : i < 90 ? 'IN_PROGRESS' : 'TODO',
     weight: (i % 3) + 1,
+    dependsOn: [],
   }));
   workspace.issues = [
     {
@@ -139,6 +140,7 @@ export function createDemo(mode: DemoMode = 'full'): Workspace {
     unit: ['м³', 'т', 'м²'][i]!,
     due: day(i + 3),
     status: 'requested',
+    unitPrice: 0,
   }));
   workspace.activity = workspace.projects.map((project) => ({
     id: crypto.randomUUID(),

@@ -40,4 +40,10 @@ No invented business records by default. Demo mode is opt-in and labeled. User c
 
 ## Employee access and UI update (2026-10-16)
 
-Basic company owner/employee sessions, invitations and revocation are implemented. Company snapshots and file blobs now persist in PostgreSQL; workspace/files use forced RLS. Full normalized business endpoints, per-project permissions, SSO/2FA/reset and immutable audit remain backlog. Interface/demo localization, improved budget/timeline, procurement deletion and reduced-motion animations are implemented. User chose not to connect automatic text translation.
+Basic company owner/employee sessions, invitations and revocation are implemented. Company snapshots and file blobs now persist in PostgreSQL; workspace/files use forced RLS. Interface/demo localization, improved budget/timeline, procurement deletion and reduced-motion animations are implemented. User chose not to connect automatic text translation.
+
+## Operational MVP (2026-10-16)
+
+Implemented role/project access, manually delivered one-use recovery links, trusted immutable audit, request approvals/orders, suppliers and append-only stock movements, task stages/dependencies, document versions/review, separate cash payments and CSV/print reports. Policies run in shared demo validation and authoritative API validation. Existing role scopes preserve prior access until an owner changes them. Full server publication is still deferred; hosted operations use isolated demo records.
+
+Remaining enterprise depth: normalized business endpoints, SSO/2FA/email transport, CPM/baselines, RFQ/tenders, warehouse costing and transfers, bank reconciliation/accounting, antivirus, signatures, collaboration and production operations. The P0-P12 list above remains a roadmap rather than a completion claim.

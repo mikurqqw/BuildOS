@@ -1,0 +1,50 @@
+.access-projects {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.access-projects label,
+.access-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.access-projects input,
+.access-check input {
+  width: auto;
+  accent-color: var(--accent);
+}
+.access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.audit-list {
+  display: grid;
+  gap: 0;
+  padding: 8px 20px;
+}
+.audit-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 1fr 2fr;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.audit-row small {
+  display: block;
+  color: var(--muted);
+  margin-top: 4px;
+}
+@media (max-width: 640px) {
+  .audit-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}

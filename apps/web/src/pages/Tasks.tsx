@@ -8,10 +8,21 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { taskSchema, type Task } from '@buildos/shared';
-import { LayoutList, Columns3, CheckSquare, Trash2 } from 'lucide-react';
+import {
+  LayoutList,
+  Columns3,
+  CheckSquare,
+  Trash2,
+  CalendarDays,
+} from 'lucide-react';
 import { useWorkspace } from '../data/workspace';
 import { useI18n } from '../i18n/context';
 import { AddButton, Empty, Status } from '../components/ui';
+import {
+  TaskPlanningDialog,
+  TaskPlanningSummary,
+} from '../components/Planning';
+import { planningMessages } from '../i18n/operations-planning';
 const statuses = [
   'TODO',
   'IN_PROGRESS',
@@ -28,8 +39,10 @@ export function Tasks({
   onCreate: () => void;
   projectId?: string;
 }) {
-  const { t, date } = useI18n();
-  const { data, update, notify } = useWorkspace();
+  const { t, date, locale } = useI18n();
+  const p = planningMessages[locale];
+  const { data, update, notify, pending, canWrite } = useWorkspace();
+  const [planning, setPlanning] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'board'>('list');
   const [status, setStatus] = useState('all');
   const [project, setProject] = useState('all');
@@ -74,10 +87,21 @@ export function Tasks({
       className="inline-select"
       aria-label={`${t.status}: ${task.title}`}
       value={task.status}
+      disabled={pending || !canWrite('tasks')}
       onChange={(event) => change(task, event.target.value)}
     >
       {statuses.map((value) => (
-        <option key={value} value={value}>
+        <option
+          key={value}
+          value={value}
+          disabled={
+            ['IN_PROGRESS', 'DONE'].includes(value) &&
+            task.dependsOn.some(
+              (id) =>
+                data.tasks.find((item) => item.id === id)?.status !== 'DONE',
+            )
+          }
+        >
           {t[value]}
         </option>
       ))}
@@ -88,9 +112,12 @@ export function Tasks({
     helper.accessor('title', {
       header: t.title,
       cell: (info) => (
-        <div className="task-title">
-          <CheckSquare size={16} />
-          <strong>{info.getValue()}</strong>
+        <div>
+          <div className="task-title">
+            <CheckSquare size={16} />
+            <strong>{info.getValue()}</strong>
+          </div>
+          <TaskPlanningSummary task={info.row.original} />
         </div>
       ),
     }),
@@ -130,13 +157,30 @@ export function Tasks({
       id: 'actions',
       header: '',
       cell: (info) => (
-        <button
-          className="icon-button"
-          aria-label={`${t.delete}: ${info.row.original.title}`}
-          onClick={() => remove(info.row.original)}
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="planning-actions">
+          <button
+            className="icon-button"
+            disabled={pending || !canWrite('tasks')}
+            aria-label={`${p.planning}: ${info.row.original.title}`}
+            onClick={() => setPlanning(info.row.original.id)}
+          >
+            <CalendarDays size={16} />
+          </button>
+          <button
+            className="icon-button"
+            disabled={
+              pending ||
+              !canWrite('tasks') ||
+              data.tasks.some((item) =>
+                item.dependsOn.includes(info.row.original.id),
+              )
+            }
+            aria-label={`${t.delete}: ${info.row.original.title}`}
+            onClick={() => remove(info.row.original)}
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
       ),
     }),
   ];
@@ -168,7 +212,9 @@ export function Tasks({
           </h1>
           <p>{t.progressMethod}</p>
         </div>
-        <AddButton onClick={onCreate}>{t.newTask}</AddButton>
+        {canWrite('tasks') && (
+          <AddButton onClick={onCreate}>{t.newTask}</AddButton>
+        )}
       </div>
       <div className="toolbar">
         <div className="segmented">
@@ -226,7 +272,11 @@ export function Tasks({
         <div className="panel">
           <Empty
             title={data.tasks.length ? t.noResults : t.empty}
-            action={<AddButton onClick={onCreate}>{t.newTask}</AddButton>}
+            action={
+              canWrite('tasks') ? (
+                <AddButton onClick={onCreate}>{t.newTask}</AddButton>
+              ) : undefined
+            }
           />
         </div>
       ) : view === 'list' ? (
@@ -312,6 +362,15 @@ export function Tasks({
                         {task.assignee || '—'} · {date(task.due)}
                       </div>
                       {statusSelect(task)}
+                      <TaskPlanningSummary task={task} />
+                      <button
+                        className="button planning-board-button"
+                        disabled={pending || !canWrite('tasks')}
+                        onClick={() => setPlanning(task.id)}
+                      >
+                        <CalendarDays size={15} />
+                        {p.planning}
+                      </button>
                     </article>
                   ))}
                 {tasks.filter((task) => task.status === value).length >
@@ -327,6 +386,7 @@ export function Tasks({
             ))}
         </div>
       )}
+      <TaskPlanningDialog taskId={planning} onClose={() => setPlanning(null)} />
     </>
   );
 }

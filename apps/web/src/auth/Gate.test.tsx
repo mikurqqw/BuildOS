@@ -29,6 +29,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('public demo entry', () => {
+  it('shows only a new password field for a recovery link', () => {
+    vi.stubGlobal('location', { search: '?reset=' + 'a'.repeat(64) });
+    const html = renderToStaticMarkup(
+      <AuthGate>
+        <span>Private content</span>
+      </AuthGate>,
+    );
+    expect(html).toContain('name="password"');
+    expect(html).not.toContain('name="email"');
+    expect(html).not.toContain('name="name"');
+    expect(html).not.toContain('Private content');
+  });
   it('does not offer unavailable employee login in a standalone demo build', () => {
     vi.stubGlobal('location', { search: '' });
     auth.demoOnly = true;

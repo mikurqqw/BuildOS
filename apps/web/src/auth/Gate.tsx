@@ -18,7 +18,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const invite = new URLSearchParams(location.search).get('invite');
-  const operation = invite ? 'accept' : auth.setupRequired ? 'setup' : 'login';
+  const reset = new URLSearchParams(location.search).get('reset');
+  const operation = reset
+    ? 'reset'
+    : invite
+      ? 'accept'
+      : auth.setupRequired
+        ? 'setup'
+        : 'login';
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -28,6 +35,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       await auth.submit(operation, {
         ...values,
         ...(invite ? { token: invite } : {}),
+        ...(reset ? { token: reset } : {}),
       });
     } catch (error) {
       setError(error instanceof ApiError ? error.code : 'REQUEST_FAILED');
@@ -35,9 +43,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }
-  if (auth.session || auth.demoAccess) return children;
+  if ((auth.session || auth.demoAccess) && !reset) return children;
   const translatedError = (code: string) => {
     if (code === 'LOGIN_FAILED') return t.loginFailed;
+    if (code === 'RECOVERY_EXPIRED') return t.accessRecoveryExpired;
     if (code === 'INVITE_EXPIRED') return t.inviteExpired;
     if (code === 'INVALID_INPUT') return t.authValidation;
     if (code === 'INVALID_SETUP_TOKEN') return t.setupTokenError;
@@ -145,18 +154,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
               </span>
               <div className="eyebrow">{t.privateWorkspace}</div>
               <h2>
-                {operation === 'setup'
-                  ? t.ownerSetup
-                  : operation === 'accept'
-                    ? t.joinTeam
-                    : t.welcomeBack}
+                {operation === 'reset'
+                  ? t.accessReset
+                  : operation === 'setup'
+                    ? t.ownerSetup
+                    : operation === 'accept'
+                      ? t.joinTeam
+                      : t.welcomeBack}
               </h2>
               <p>
-                {operation === 'setup'
-                  ? t.ownerSetupHint
-                  : operation === 'accept'
-                    ? t.joinTeamHint
-                    : t.loginHint}
+                {operation === 'reset'
+                  ? t.accessResetHint
+                  : operation === 'setup'
+                    ? t.ownerSetupHint
+                    : operation === 'accept'
+                      ? t.joinTeamHint
+                      : t.loginHint}
               </p>
               <form
                 className="auth-form"
@@ -174,7 +187,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
                     />
                   </label>
                 )}
-                {operation !== 'login' && (
+                {(operation === 'setup' || operation === 'accept') && (
                   <label>
                     {t.fullName}
                     <input
@@ -186,7 +199,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
                     />
                   </label>
                 )}
-                {operation !== 'accept' && (
+                {operation !== 'accept' && operation !== 'reset' && (
                   <label>
                     {t.email}
                     <input
@@ -238,11 +251,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
                   ) : (
                     <ArrowRight size={17} />
                   )}{' '}
-                  {operation === 'setup'
-                    ? t.createWorkspace
-                    : operation === 'accept'
-                      ? t.register
-                      : t.signIn}
+                  {operation === 'reset'
+                    ? t.accessReset
+                    : operation === 'setup'
+                      ? t.createWorkspace
+                      : operation === 'accept'
+                        ? t.register
+                        : t.signIn}
                 </button>
               </form>
               <div className="auth-footnote">

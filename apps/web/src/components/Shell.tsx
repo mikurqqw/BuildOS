@@ -50,8 +50,11 @@ const navigation = [
     label: 'management',
     items: [
       { key: 'budget', path: '/budget', icon: Wallet },
+      { key: 'finance', path: '/finance', icon: Wallet },
       { key: 'procurement', path: '/procurement', icon: Package },
       { key: 'team', path: '/team', icon: Users },
+      { key: 'reports', path: '/reports', icon: ChartNoAxesCombined },
+      { key: 'accessAudit', path: '/audit', icon: ShieldCheck },
     ],
   },
 ] as const;

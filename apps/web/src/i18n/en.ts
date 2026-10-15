@@ -1,7 +1,13 @@
+import { docsEn } from './operations-docs';
+import { errorsEn } from './operations-errors';
+import { accessEn } from './operations-access';
 import { upgradeEn } from './upgrade';
 import type { Messages } from './ru';
 export const en: Messages = {
   ...upgradeEn,
+  ...accessEn,
+  ...docsEn,
+  ...errorsEn,
   buildTogether: 'Build together. Build better.',
   precision: 'Precision in every detail',
   browserStorage: 'BROWSER STORAGE',

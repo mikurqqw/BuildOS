@@ -10,7 +10,8 @@ export function Issues({
   onCreate: () => void;
 }) {
   const { t, date } = useI18n();
-  const { data, update } = useWorkspace();
+  const { data, update, canWrite, pending } = useWorkspace();
+  const writable = canWrite('issues');
   const issues = data.issues.filter((issue) =>
     `${issue.title} ${issue.description}`
       .toLocaleLowerCase()
@@ -27,12 +28,16 @@ export function Issues({
           </h1>
           <p>{t.issueHint}</p>
         </div>
-        <AddButton onClick={onCreate}>{t.newIssue}</AddButton>
+        {writable && <AddButton onClick={onCreate}>{t.newIssue}</AddButton>}
       </div>
       {!issues.length ? (
         <div className="panel">
           <Empty
-            action={<AddButton onClick={onCreate}>{t.newIssue}</AddButton>}
+            action={
+              writable ? (
+                <AddButton onClick={onCreate}>{t.newIssue}</AddButton>
+              ) : undefined
+            }
           />
         </div>
       ) : (
@@ -68,34 +73,37 @@ export function Issues({
               </div>
               <div className="issue-footer">
                 <Status value={issue.status} />
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    update(
-                      (draft) => {
-                        const record = draft.issues.find(
-                          (item) => item.id === issue.id,
-                        );
-                        if (record)
-                          record.status =
-                            issue.status === 'RESOLVED'
-                              ? 'OPEN'
-                              : issue.status === 'OPEN'
-                                ? 'IN_PROGRESS'
-                                : 'RESOLVED';
-                      },
-                      'eventUpdate',
-                      issue.title,
-                    )
-                  }
-                >
-                  {issue.status === 'RESOLVED'
-                    ? t.reopen
-                    : issue.status === 'OPEN'
-                      ? t.IN_PROGRESS
-                      : t.resolve}
-                  <ArrowRight size={15} />
-                </button>
+                {writable && (
+                  <button
+                    className="text-button"
+                    disabled={pending}
+                    onClick={() =>
+                      update(
+                        (draft) => {
+                          const record = draft.issues.find(
+                            (item) => item.id === issue.id,
+                          );
+                          if (record)
+                            record.status =
+                              issue.status === 'RESOLVED'
+                                ? 'OPEN'
+                                : issue.status === 'OPEN'
+                                  ? 'IN_PROGRESS'
+                                  : 'RESOLVED';
+                        },
+                        'eventUpdate',
+                        issue.title,
+                      )
+                    }
+                  >
+                    {issue.status === 'RESOLVED'
+                      ? t.reopen
+                      : issue.status === 'OPEN'
+                        ? t.IN_PROGRESS
+                        : t.resolve}
+                    <ArrowRight size={15} />
+                  </button>
+                )}
               </div>
             </article>
           ))}

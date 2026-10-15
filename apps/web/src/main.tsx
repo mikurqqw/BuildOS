@@ -7,6 +7,8 @@ import '@fontsource-variable/manrope';
 import './styles.css';
 import './upgrade.css';
 import './refinements.css';
+import './procurement-operations.css';
+import './documents-finance.css';
 import { App } from './App';
 import { I18nProvider } from './i18n/context';
 import { WorkspaceProvider } from './data/workspace';

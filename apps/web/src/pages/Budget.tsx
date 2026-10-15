@@ -13,7 +13,8 @@ export default function Budget({
   onCreate: () => void;
 }) {
   const { t, money } = useI18n();
-  const { data, update } = useWorkspace();
+  const { data, update, canWrite, pending } = useWorkspace();
+  const writable = canWrite('budgetLines');
   const [project, setProject] = useState('all');
   const lines = data.budgetLines.filter(
     (line) =>
@@ -40,7 +41,7 @@ export default function Budget({
           <h1>{t.budget}</h1>
           <p>{t.budgetSub}</p>
         </div>
-        <AddButton onClick={onCreate}>{t.addLine}</AddButton>
+        {writable && <AddButton onClick={onCreate}>{t.addLine}</AddButton>}
       </div>
       <div className="toolbar">
         <select
@@ -108,24 +109,27 @@ export default function Budget({
                     <td>{money(line.actual)}</td>
                     <td>{money(line.committed)}</td>
                     <td>
-                      <button
-                        className="icon-button"
-                        aria-label={`${t.delete}: ${line.name}`}
-                        onClick={() => {
-                          if (window.confirm(t.deleteConfirm))
-                            update(
-                              (draft) => {
-                                draft.budgetLines = draft.budgetLines.filter(
-                                  (item) => item.id !== line.id,
-                                );
-                              },
-                              'eventDelete',
-                              line.name,
-                            );
-                        }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      {writable && (
+                        <button
+                          className="icon-button"
+                          disabled={pending}
+                          aria-label={`${t.delete}: ${line.name}`}
+                          onClick={() => {
+                            if (window.confirm(t.deleteConfirm))
+                              update(
+                                (draft) => {
+                                  draft.budgetLines = draft.budgetLines.filter(
+                                    (item) => item.id !== line.id,
+                                  );
+                                },
+                                'eventDelete',
+                                line.name,
+                              );
+                          }}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -136,7 +140,11 @@ export default function Budget({
       ) : (
         <div className="panel">
           <Empty
-            action={<AddButton onClick={onCreate}>{t.addLine}</AddButton>}
+            action={
+              writable ? (
+                <AddButton onClick={onCreate}>{t.addLine}</AddButton>
+              ) : undefined
+            }
           />
         </div>
       )}

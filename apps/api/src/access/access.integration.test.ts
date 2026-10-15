@@ -1,20 +1,13 @@
 import { beforeAll, afterAll, expect, it } from 'vitest';
 import { Pool } from 'pg';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { buildApp } from '../app';
 import { authSessionSchema, emptyWorkspace } from '@buildos/shared';
 import { transaction } from './repository';
 import { token, digest, csrf } from './security';
-const envFile = resolve('apps/api/.env.local');
-const url =
-  process.env.TEST_DATABASE_URL ??
-  (existsSync(envFile)
-    ? readFileSync(envFile, 'utf8')
-        .match(/^DATABASE_URL=(.+)$/m)?.[1]
-        ?.trim()
-    : undefined);
+const url = process.env.TEST_DATABASE_URL;
 const schema = `qa_${randomUUID().replaceAll('-', '')}`;
 const ownerPool = url ? new Pool({ connectionString: url }) : null;
 let pool: Pool;
@@ -339,6 +332,161 @@ suite(
       client.query('SELECT "companyId" FROM "CompanyWorkspace"'),
     );
     expect(rows.rows.map((row) => row.companyId)).toEqual([companyId]);
+  },
+);
+suite(
+  'enforces project scope, immutable audit, file references and single-use recovery',
+  async () => {
+    const ownerHeaders = {
+      cookie: owner.cookie,
+      origin,
+      'x-csrf-token': owner.csrf,
+    };
+    const current = (
+      await app.inject({
+        url: '/api/v1/workspace',
+        headers: { cookie: owner.cookie },
+      })
+    ).json();
+    const forged = structuredClone(current.data);
+    forged.documents[0].projectId = 'other-project';
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/v1/workspace',
+          headers: { ...ownerHeaders, 'if-match': `"${current.version}"` },
+          payload: forged,
+        })
+      ).statusCode,
+    ).toBe(422);
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/team/${employee.id}`,
+      headers: ownerHeaders,
+      payload: { role: 'VIEWER', allProjects: false, projectIds: [] },
+    });
+    expect(patch.statusCode).toBe(200);
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/workspace',
+          headers: { cookie: employee.cookie },
+        })
+      ).statusCode,
+    ).toBe(401);
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { origin },
+      payload: {
+        email: 'employee@example.test',
+        password: credentials.password,
+      },
+    });
+    expect(login.statusCode).toBe(200);
+    const session = authSessionSchema.parse(login.json());
+    employee.cookie = `buildos_session=${login.cookies[0]!.value}`;
+    employee.csrf = session.csrfToken;
+    expect(session.user.role).toBe('VIEWER');
+    const scoped = (
+      await app.inject({
+        url: '/api/v1/workspace',
+        headers: { cookie: employee.cookie },
+      })
+    ).json();
+    expect(scoped.data.projects).toEqual([]);
+    expect(scoped.data.documents).toEqual([]);
+    expect(
+      (
+        await app.inject({
+          url: `/api/v1/files/${storedFileId}`,
+          headers: { cookie: employee.cookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const blocked = structuredClone(scoped.data);
+    blocked.projects = current.data.projects;
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: '/api/v1/workspace',
+          headers: {
+            cookie: employee.cookie,
+            origin,
+            'x-csrf-token': employee.csrf,
+            'if-match': `"${scoped.version}"`,
+          },
+          payload: blocked,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const journal = await app.inject({
+      url: '/api/v1/audit?limit=1',
+      headers: { cookie: owner.cookie },
+    });
+    expect(journal.statusCode).toBe(200);
+    expect(journal.json().events).toHaveLength(1);
+    expect(journal.json().nextCursor).toBeTruthy();
+    const secondPage = await app.inject({
+      url: `/api/v1/audit?limit=1&before=${encodeURIComponent(String(journal.json().nextCursor))}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(secondPage.statusCode).toBe(200);
+    expect(secondPage.json().events).toHaveLength(1);
+    expect(secondPage.json().events[0].id).not.toBe(
+      journal.json().events[0].id,
+    );
+
+    await expect(
+      transaction(pool, owner.companyId, (client) =>
+        client.query('DELETE FROM "AuditEvent" WHERE "companyId"=$1', [
+          owner.companyId,
+        ]),
+      ),
+    ).rejects.toThrow('immutable');
+    const hidden = await app.inject({
+      url: '/api/v1/audit',
+      headers: { cookie: employee.cookie },
+    });
+    expect(hidden.json().events).toEqual([]);
+    const issued = await app.inject({
+      method: 'POST',
+      url: `/api/v1/team/${employee.id}/recovery`,
+      headers: ownerHeaders,
+    });
+    expect(issued.statusCode).toBe(200);
+    const token = String(issued.json().token);
+    const password = 'Synthetic replacement passphrase 2026!';
+    const reset = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/reset',
+      headers: { origin },
+      payload: { token, password },
+    });
+    expect(reset.statusCode).toBe(200);
+    expect(reset.json().user.passwordHash).toBeUndefined();
+    expect(
+      (
+        await app.inject({
+          url: '/api/v1/workspace',
+          headers: { cookie: employee.cookie },
+        })
+      ).statusCode,
+    ).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/v1/auth/reset',
+          headers: { origin },
+          payload: { token, password },
+        })
+      ).statusCode,
+    ).toBe(410);
+    employee.cookie = `buildos_session=${reset.cookies[0]!.value}`;
+    employee.csrf = authSessionSchema.parse(reset.json()).csrfToken;
   },
 );
 suite(

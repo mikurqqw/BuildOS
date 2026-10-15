@@ -29,7 +29,7 @@ type AuthState = AuthResult & {
   error: string;
   refresh: () => Promise<void>;
   submit: (
-    operation: 'setup' | 'login' | 'accept',
+    operation: 'setup' | 'login' | 'accept' | 'reset',
     body: unknown,
   ) => Promise<void>;
   logout: () => Promise<void>;
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('buildos-auth-expired', expired);
   }, [client]);
   async function submit(
-    operation: 'setup' | 'login' | 'accept',
+    operation: 'setup' | 'login' | 'accept' | 'reset',
     body: unknown,
   ) {
     const session = await api(`/auth/${operation}`, authSessionSchema, {
@@ -88,9 +88,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(body),
     });
     client.setQueryData(queryKey, { ...signedOut, session });
-    if (operation === 'accept') {
+    if (operation === 'accept' || operation === 'reset') {
       const url = new URL(location.href);
       url.searchParams.delete('invite');
+      url.searchParams.delete('reset');
       history.replaceState(null, '', url.pathname + url.search);
     }
   }

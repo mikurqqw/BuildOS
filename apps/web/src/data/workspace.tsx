@@ -13,14 +13,23 @@ import {
   applyChange,
   createScopeGuard,
   type Workspace,
+  type AccessActor,
+  type WorkspaceCollection,
+  demoActor,
+  canWrite as hasWrite,
+  mergeWorkspace,
+  validateWorkspaceChange,
 } from '@buildos/shared';
 import { createDemo } from './demo';
 import { localizeDemo } from './demo-copy';
 import { useI18n } from '../i18n/context';
 import { useAuth } from '../auth/context';
 import { api, ApiError } from './api';
+import { operationError } from '../i18n/operations-errors';
 type ActivityKind = Workspace['activity'][number]['kind'];
 type ContextValue = {
+  actor: AccessActor;
+  canWrite: (collection: WorkspaceCollection) => boolean;
   data: Workspace;
   demo: boolean;
   update: (
@@ -42,6 +51,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     demoAccess ? createDemo(demoMode ?? 'full') : emptyWorkspace(),
   );
   const [demo, setDemoState] = useState(demoAccess);
+  const actor: AccessActor = demo
+    ? demoActor
+    : (session?.user ?? {
+        id: 'signed-out',
+        role: 'VIEWER',
+        allProjects: false,
+        projectIds: [],
+      });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(!demoAccess);
   const [failed, setFailed] = useState(false);
@@ -94,7 +111,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       setPending(true);
       try {
-        const next = applyChange(current.current.data, change);
+        const changed = applyChange(current.current.data, change);
+        const next = validateWorkspaceChange(
+          current.current.data,
+          mergeWorkspace(current.current.data, changed, actor),
+          actor,
+        );
         if (activeDemo.current) {
           current.current = { ...current.current, data: next };
           setData(next);
@@ -119,7 +141,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           setScope(guard.current.invalidate());
           await load();
           notify(t.workspaceChanged);
-        } else notify(t.storageError);
+        } else notify(operationError(error, t) ?? t.storageError);
         return false;
       } finally {
         setPending(false);
@@ -223,6 +245,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     <Context.Provider
       value={{
         data: demo ? localizeDemo(data, locale) : data,
+        actor,
+        canWrite: (collection) => hasWrite(actor, collection),
         demo,
         update,
         setDemo,

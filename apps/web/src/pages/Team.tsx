@@ -13,12 +13,13 @@ import {
   Clock3,
   X,
 } from 'lucide-react';
-import { teamSchema, inviteSchema } from '@buildos/shared';
+import { teamSchema, inviteSchema, memberAccessSchema } from '@buildos/shared';
 import { useAuth } from '../auth/context';
 import { useWorkspace } from '../data/workspace';
 import { useI18n } from '../i18n/context';
 import { api, ApiError } from '../data/api';
 import { Empty, Modal } from '../components/ui';
+import '../access-operations.css';
 export function Team({ search }: { search: string }) {
   const { t, date } = useI18n();
   const { session } = useAuth();
@@ -26,6 +27,8 @@ export function Team({ search }: { search: string }) {
   const client = useQueryClient();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [recoveryLink, setRecoveryLink] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const owner = session?.user.role === 'OWNER';
@@ -81,6 +84,62 @@ export function Team({ search }: { search: string }) {
       notify(t.serverUnavailable);
     }
   }
+  async function permissions(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    const form = new FormData(event.currentTarget);
+    const parsed = memberAccessSchema.safeParse({
+      role: form.get('role'),
+      allProjects: form.has('allProjects'),
+      projectIds: form.getAll('projectIds'),
+    });
+    if (!parsed.success) {
+      setError(t.validation);
+      setBusy(false);
+      return;
+    }
+    try {
+      await api(`/team/${editing}`, z.object({ ok: z.boolean() }), {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(parsed.data),
+      });
+      await client.invalidateQueries({ queryKey: ['team'] });
+      setEditing(null);
+      notify(t.saved);
+    } catch {
+      setError(t.serverUnavailable);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function recover(id: string) {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api(
+        `/team/${id}/recovery`,
+        z.object({ token: z.string() }),
+        { method: 'POST', headers },
+      );
+      setRecoveryLink(`${location.origin}/?reset=${result.token}`);
+    } catch {
+      notify(t.serverUnavailable);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const roleLabels = {
+    OWNER: t.accessRoleOwner,
+    MANAGER: t.accessRoleManager,
+    EMPLOYEE: t.accessRoleEmployee,
+    PROCUREMENT: t.accessRoleProcurement,
+    FINANCE: t.accessRoleFinance,
+    VIEWER: t.accessRoleViewer,
+  };
+  const editingUser = query.data?.users.find((user) => user.id === editing);
   async function revoke(id: string) {
     if (!window.confirm(t.deleteConfirm)) return;
     try {
@@ -200,7 +259,7 @@ export function Team({ search }: { search: string }) {
                   <div className="member-account-footer">
                     <span>
                       <Users size={14} />
-                      {user.role === 'OWNER' ? t.ownerRole : t.employeeRole}
+                      {roleLabels[user.role]}
                     </span>
                     {owner &&
                       user.id !== session?.user.id &&
@@ -220,6 +279,28 @@ export function Team({ search }: { search: string }) {
                         </button>
                       )}
                   </div>
+                  {owner &&
+                    user.id !== session?.user.id &&
+                    user.role !== 'OWNER' && (
+                      <div className="access-actions">
+                        <button
+                          className="button"
+                          onClick={() => {
+                            setEditing(user.id);
+                            setError('');
+                          }}
+                        >
+                          {t.accessPermissions}
+                        </button>
+                        <button
+                          className="button"
+                          disabled={busy || !user.active}
+                          onClick={() => void recover(user.id)}
+                        >
+                          {t.accessRecovery}
+                        </button>
+                      </div>
+                    )}
                 </article>
               ))}
           </div>
@@ -257,6 +338,95 @@ export function Team({ search }: { search: string }) {
           )}
         </>
       )}
+      <Modal
+        open={Boolean(editingUser)}
+        onClose={() => setEditing(null)}
+        title={t.accessPermissions}
+      >
+        {editingUser && (
+          <form
+            className="auth-form"
+            onSubmit={(event) => void permissions(event)}
+            key={editingUser.id}
+          >
+            <label>
+              {t.role}
+              <select name="role" defaultValue={editingUser.role}>
+                {(
+                  [
+                    'MANAGER',
+                    'EMPLOYEE',
+                    'PROCUREMENT',
+                    'FINANCE',
+                    'VIEWER',
+                  ] as const
+                ).map((role) => (
+                  <option key={role} value={role}>
+                    {roleLabels[role]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="access-check">
+              <input
+                type="checkbox"
+                name="allProjects"
+                defaultChecked={editingUser.allProjects}
+              />
+              {t.accessAllProjects}
+            </label>
+            <span>{t.accessProjects}</span>
+            <div className="access-projects">
+              {data.projects.map((project) => (
+                <label key={project.id}>
+                  <input
+                    type="checkbox"
+                    name="projectIds"
+                    value={project.id}
+                    defaultChecked={editingUser.projectIds.includes(project.id)}
+                  />
+                  {project.name}
+                </label>
+              ))}
+            </div>
+            <p className="form-hint">{t.accessNoProjects}</p>
+            {error && (
+              <p role="alert" className="form-error">
+                {error}
+              </p>
+            )}
+            <button className="button primary" disabled={busy}>
+              {t.accessSave}
+            </button>
+          </form>
+        )}
+      </Modal>
+      <Modal
+        open={Boolean(recoveryLink)}
+        onClose={() => setRecoveryLink('')}
+        title={t.accessRecovery}
+      >
+        <div className="invite-result">
+          <p>{t.accessRecoveryHint}</p>
+          <input
+            aria-label={t.accessRecovery}
+            value={recoveryLink}
+            readOnly
+            onFocus={(event) => event.target.select()}
+          />
+          <button
+            className="button primary"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(recoveryLink)
+                .then(() => notify(t.linkCopied))
+                .catch(() => notify(t.copyFailed));
+            }}
+          >
+            {t.copyLink}
+          </button>
+        </div>
+      </Modal>
       <Modal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { Routes, Route, Link } from 'react-router';
-import type { Project } from '@buildos/shared';
+import type { Project, WorkspaceCollection } from '@buildos/shared';
 import { Shell } from './components/Shell';
 import type { FormKind } from './components/RecordForm';
 import { Dashboard } from './pages/Dashboard';
@@ -28,8 +28,19 @@ const Issues = lazy(() =>
 const Documents = lazy(() =>
   import('./pages/Documents').then((module) => ({ default: module.Documents })),
 );
-const Registers = lazy(() =>
-  import('./pages/Registers').then((module) => ({ default: module.Registers })),
+const Procurement = lazy(() =>
+  import('./pages/Procurement').then((module) => ({
+    default: module.Procurement,
+  })),
+);
+const Finance = lazy(() =>
+  import('./pages/Finance').then((module) => ({ default: module.Finance })),
+);
+const Reports = lazy(() =>
+  import('./pages/Reports').then((module) => ({ default: module.Reports })),
+);
+const Audit = lazy(() =>
+  import('./pages/Audit').then((module) => ({ default: module.Audit })),
 );
 const Schedule = lazy(() =>
   import('./pages/Schedule').then((module) => ({ default: module.Schedule })),
@@ -41,7 +52,7 @@ const Team = lazy(() =>
   import('./pages/Team').then((module) => ({ default: module.Team })),
 );
 export function App() {
-  const { data, notify } = useWorkspace();
+  const { data, notify, canWrite } = useWorkspace();
   const { t } = useI18n();
   const [search, setSearch] = useState('');
   const [form, setForm] = useState<{
@@ -50,9 +61,21 @@ export function App() {
     editing?: Project;
   } | null>(null);
   function open(kind: FormKind, projectId?: string, editing?: Project) {
+    const collections: Record<FormKind, WorkspaceCollection> = {
+      project: 'projects',
+      task: 'tasks',
+      issue: 'issues',
+      budget: 'budgetLines',
+      member: 'members',
+      request: 'requests',
+    };
+    if (!canWrite(collections[kind])) {
+      notify(t.operationForbidden);
+      return;
+    }
     if (!['project', 'member'].includes(kind) && !data.projects.length) {
       notify(t.noProject);
-      setForm({ kind: 'project' });
+      if (canWrite('projects')) setForm({ kind: 'project' });
       return;
     }
     setForm({ kind, projectId, editing });
@@ -109,13 +132,12 @@ export function App() {
           <Route
             path="/procurement"
             element={
-              <Registers
-                kind="procurement"
-                search={search}
-                onCreate={() => open('request')}
-              />
+              <Procurement search={search} onCreate={() => open('request')} />
             }
           />
+          <Route path="/finance" element={<Finance search={search} />} />
+          <Route path="/reports" element={<Reports search={search} />} />
+          <Route path="/audit" element={<Audit search={search} />} />
           <Route path="/team" element={<Team search={search} />} />
           <Route path="/settings" element={<Settings />} />
           <Route

@@ -13,9 +13,13 @@ import { createTimeline, dateKey, progress } from '@buildos/shared';
 import { useWorkspace } from '../data/workspace';
 import { useI18n } from '../i18n/context';
 import { Status, Empty } from '../components/ui';
+import { StageManager, TaskPlanningDialog } from '../components/Planning';
+import { planningMessages } from '../i18n/operations-planning';
 export function Schedule() {
-  const { data } = useWorkspace();
-  const { t, date } = useI18n();
+  const { data, canWrite, pending } = useWorkspace();
+  const { t, date, locale } = useI18n();
+  const p = planningMessages[locale];
+  const [planning, setPlanning] = useState<string | null>(null);
   const [project, setProject] = useState('all');
   const [quarters, setQuarters] = useState(true);
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -23,7 +27,23 @@ export function Schedule() {
   const projects = data.projects.filter(
     (item) => project === 'all' || item.id === project,
   );
-  const calendar = createTimeline(projects, quarters);
+  const calendar = createTimeline(
+    projects.map((item) => {
+      const tasks = data.tasks.filter((task) => task.projectId === item.id);
+      return {
+        ...item,
+        start:
+          [
+            item.start,
+            ...tasks.map((task) => task.start ?? task.due),
+          ].sort()[0] ?? item.start,
+        end:
+          [item.end, ...tasks.map((task) => task.due)].sort().at(-1) ??
+          item.end,
+      };
+    }),
+    quarters,
+  );
   const selectedTasks = data.tasks.filter((task) =>
     projects.some((project) => project.id === task.projectId),
   );
@@ -295,6 +315,33 @@ export function Schedule() {
                         </div>
                       </div>
                       {open &&
+                        data.stages
+                          .filter((stage) => stage.projectId === item.id)
+                          .sort((a, b) => a.start.localeCompare(b.start))
+                          .map((stage) => (
+                            <div
+                              className="gantt-grid-row gantt-task-row planning-stage-row"
+                              key={stage.id}
+                            >
+                              <div className="gantt-sticky gantt-task-cell">
+                                <Flag size={13} />
+                                <span title={stage.name}>
+                                  {p.planningStage}: {stage.name}
+                                </span>
+                              </div>
+                              <div className="gantt-canvas">
+                                <span
+                                  className="planning-stage-bar"
+                                  style={{
+                                    left: `${calendar.position(stage.start)}%`,
+                                    width: `${Math.max(0.7, calendar.position(stage.end) - calendar.position(stage.start))}%`,
+                                  }}
+                                  title={`${stage.name} · ${date(stage.start)} — ${date(stage.end)}`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                      {open &&
                         preview.map((task) => (
                           <div
                             className="gantt-grid-row gantt-task-row"
@@ -326,9 +373,27 @@ export function Schedule() {
                                 />
                               )}
                               {calendar.position(task.due) >= 0 &&
-                                calendar.position(task.due) <= 100 && (
-                                  <span
+                                calendar.position(task.due) <= 100 &&
+                                (task.start ? (
+                                  <button
+                                    type="button"
+                                    className={`planning-task-range ${task.status === 'DONE' ? 'done' : ''}`}
+                                    disabled={pending || !canWrite('tasks')}
+                                    onClick={() => setPlanning(task.id)}
+                                    style={{
+                                      left: `${calendar.position(task.start)}%`,
+                                      width: `${Math.max(0.7, calendar.position(task.due) - calendar.position(task.start))}%`,
+                                    }}
+                                    title={`${task.title} · ${date(task.start)} — ${date(task.due)}`}
+                                    aria-label={`${p.planning}: ${task.title} · ${date(task.start)} — ${date(task.due)}`}
+                                  />
+                                ) : (
+                                  <button
+                                    type="button"
                                     className={`gantt-task-pin ${task.status === 'DONE' ? 'done' : ''}`}
+                                    disabled={pending || !canWrite('tasks')}
+                                    onClick={() => setPlanning(task.id)}
+                                    aria-label={`${p.planning}: ${task.title}`}
                                     style={{
                                       left: `${calendar.position(task.due)}%`,
                                     }}
@@ -336,8 +401,8 @@ export function Schedule() {
                                   >
                                     <i />
                                     <span>{date(task.due)}</span>
-                                  </span>
-                                )}
+                                  </button>
+                                ))}
                             </div>
                           </div>
                         ))}
@@ -375,6 +440,8 @@ export function Schedule() {
           </>
         )}
       </section>
+      <StageManager projectId={project === 'all' ? undefined : project} />
+      <TaskPlanningDialog taskId={planning} onClose={() => setPlanning(null)} />
     </>
   );
 }

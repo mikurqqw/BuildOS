@@ -1,0 +1,198 @@
+.planning-form .planning-wide,
+.planning-form-title,
+.planning-fields {
+  grid-column: 1 / -1;
+}
+.planning-form-title {
+  display: grid;
+  gap: 7px;
+  padding: 14px;
+  background: var(--bg);
+  border-radius: 10px;
+}
+.planning-form-title span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.planning-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.planning-dependencies {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+.planning-dependencies legend {
+  font-size: 12px;
+  padding: 0 6px;
+  font-weight: 600;
+}
+.planning-dependencies > p {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+.planning-predecessors {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.planning-predecessors label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.planning-predecessors input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+.planning-predecessors label > span {
+  display: grid;
+  gap: 5px;
+}
+.planning-predecessors small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.planning-task-summary {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: normal;
+  line-height: 1.5;
+}
+.planning-task-summary .planning-blocked {
+  color: var(--warning);
+}
+.planning-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.planning-board-button {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+}
+.planning-stage-panel {
+  margin-top: 22px;
+  padding: 22px;
+}
+.planning-stage-panel .section-heading {
+  gap: 15px;
+  flex-wrap: wrap;
+}
+.planning-stage-panel .section-heading p {
+  max-width: 560px;
+}
+.planning-stage-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.planning-stage-card {
+  display: flex;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.planning-stage-card > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.planning-stage-card > div:first-of-type {
+  min-width: 0;
+  flex: 1;
+}
+.planning-stage-card h3 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.planning-stage-card p,
+.planning-stage-card span,
+.planning-stage-card small {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.planning-stage-card p {
+  margin: 9px 0;
+}
+.planning-stage-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.planning-delete {
+  padding-top: 16px;
+}
+.planning-task-range {
+  position: absolute;
+  top: 12px;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  min-width: 5px;
+}
+.planning-task-range::before {
+  content: '';
+  position: absolute;
+  inset: -11px -3px;
+}
+button.gantt-task-pin {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.planning-task-range.done {
+  background: color-mix(in srgb, var(--success) 15%, var(--surface));
+  border-color: var(--success);
+}
+.planning-task-range:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+.planning-stage-row .gantt-canvas {
+  min-height: 48px;
+}
+.planning-stage-bar {
+  position: absolute;
+  top: 17px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px dashed var(--info);
+  background: color-mix(in srgb, var(--info) 12%, var(--surface));
+}
+@media (max-width: 600px) {
+  .planning-fields {
+    grid-template-columns: 1fr;
+  }
+  .planning-form .planning-wide {
+    grid-column: 1;
+  }
+  .planning-stage-panel {
+    padding: 16px;
+  }
+  .planning-stage-panel .section-heading .button {
+    width: 100%;
+  }
+}

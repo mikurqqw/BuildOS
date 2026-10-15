@@ -21,6 +21,7 @@ model Company {
   invitations Invitation[]
   workspace CompanyWorkspace?
   files StoredFile[]
+  auditEvents AuditEvent[]
 }
 model AppUser {
   id String @id @db.Uuid
@@ -34,6 +35,9 @@ model AppUser {
   active Boolean @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   sessions AuthSession[]
+  allProjects Boolean @default(true)
+  projectIds String[] @default([])
+  recoveries PasswordRecovery[]
 }
 model AuthSession {
   tokenHash String @id
@@ -66,7 +70,30 @@ model StoredFile {
   company Company @relation(fields:[companyId],references:[id])
   name String
   mime String
+  projectId String?
   bytes Bytes
   createdAt DateTime @default(now()) @db.Timestamptz(6)
   @@index([companyId])
+}
+
+model PasswordRecovery {
+ tokenHash String @id
+ userId String @db.Uuid
+ user AppUser @relation(fields:[userId],references:[id],onDelete:Cascade)
+ expiresAt DateTime @db.Timestamptz(6)
+ consumedAt DateTime? @db.Timestamptz(6)
+ @@index([userId])
+}
+model AuditEvent {
+ id String @id @db.Uuid
+ companyId String @db.Uuid
+ company Company @relation(fields:[companyId],references:[id])
+ actorId String? @db.Uuid
+ actorName String
+ action String
+ collection String
+ recordId String?
+ projectId String?
+ createdAt DateTime @default(now()) @db.Timestamptz(6)
+ @@index([companyId,createdAt(sort:Desc),id(sort:Desc)],map:"AuditEvent_company_created_idx")
 }

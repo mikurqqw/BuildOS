@@ -6,10 +6,13 @@ import {
   setupSchema,
   loginSchema,
   acceptInviteSchema,
+  resetPasswordSchema,
   type AuthUser,
+  userSchema,
 } from '@buildos/shared';
 import { transaction } from './repository.js';
 import { ApiError } from './errors.js';
+import { audit } from './audit-service.js';
 import { digest, token } from './security.js';
 const passwordHash = (password: string) =>
   hash(password, {
@@ -67,6 +70,8 @@ export class IdentityService {
         name: body.name,
         email: body.email,
         role: 'OWNER' as const,
+        allProjects: true,
+        projectIds: [],
         position: '',
         company: body.company,
       };
@@ -97,6 +102,8 @@ export class IdentityService {
       name: user.name,
       email: user.email,
       role: user.role,
+      allProjects: user.allProjects,
+      projectIds: user.projectIds,
       position: user.position,
       company: user.company,
     };
@@ -148,9 +155,58 @@ export class IdentityService {
         name: parsed.data.name,
         email: invitation.email,
         role: 'EMPLOYEE' as const,
+        allProjects: true,
+        projectIds: [],
         position: invitation.position,
         company: invitation.company,
       };
+    });
+  }
+  async reset(input: unknown) {
+    const parsed = resetPasswordSchema.safeParse(input);
+    if (!parsed.success) throw new ApiError(422, 'INVALID_INPUT');
+    const password = await passwordHash(parsed.data.password);
+    return transaction(this.pool, null, async (client) => {
+      // Lock users before recovery rows, matching issuance and permission updates.
+      const candidate = await client.query<{ userId: string }>(
+        'SELECT "userId" FROM "PasswordRecovery" WHERE "tokenHash"=$1',
+        [digest(parsed.data.token)],
+      );
+      const candidateId = candidate.rows[0]?.userId;
+      if (!candidateId) throw new ApiError(410, 'RECOVERY_EXPIRED');
+      await client.query('SELECT id FROM "AppUser" WHERE id=$1 FOR UPDATE', [
+        candidateId,
+      ]);
+      const result = await client.query<{ userId: string }>(
+        'SELECT "userId" FROM "PasswordRecovery" WHERE "tokenHash"=$1 AND "consumedAt" IS NULL AND "expiresAt">now() FOR UPDATE',
+        [digest(parsed.data.token)],
+      );
+      const record = result.rows[0];
+      if (!record) throw new ApiError(410, 'RECOVERY_EXPIRED');
+      const updated = await client.query<AuthUser>(
+        'UPDATE "AppUser" u SET "passwordHash"=$1 WHERE u.id=$2 AND u.active=true RETURNING u.*,(SELECT name FROM "Company" c WHERE c.id=u."companyId") AS company',
+        [password, record.userId],
+      );
+      const user = updated.rows[0];
+      if (!user) throw new ApiError(410, 'RECOVERY_EXPIRED');
+      await client.query(
+        'UPDATE "PasswordRecovery" SET "consumedAt"=now() WHERE "userId"=$1 AND "consumedAt" IS NULL',
+        [record.userId],
+      );
+      await client.query('DELETE FROM "AuthSession" WHERE "userId"=$1', [
+        record.userId,
+      ]);
+      await client.query("SELECT set_config('app.company_id',$1,true)", [
+        user.companyId,
+      ]);
+      await audit(
+        client,
+        { ...user, sessionToken: '' },
+        'recovery.consume',
+        'users',
+        user.id,
+      );
+      return userSchema.parse(user);
     });
   }
   async session(user: AuthUser) {

@@ -3,10 +3,11 @@ import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
 import type { Pool } from 'pg';
 import { z } from 'zod';
-import { userSchema } from '@buildos/shared';
+import { userSchema, memberAccessSchema } from '@buildos/shared';
 import { IdentityService } from './identity-service.js';
 import { WorkspaceService } from './workspace-service.js';
 import { TeamService } from './team-service.js';
+import { listAudit } from './audit-service.js';
 import { FileService } from './file-service.js';
 import { ApiError } from './errors.js';
 import {
@@ -53,7 +54,7 @@ export async function registerAccess(
       csrfToken: csrf(principal.sessionToken),
     };
   });
-  for (const operation of ['setup', 'login', 'accept'] as const)
+  for (const operation of ['setup', 'login', 'accept', 'reset'] as const)
     app.post(
       `/api/v1/auth/${operation}`,
       { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } },
@@ -83,7 +84,7 @@ export async function registerAccess(
   });
   app.get('/api/v1/workspace', async (request, reply) => {
     const user = await authenticate(options.database, request);
-    const result = await workspace.get(user.companyId);
+    const result = await workspace.get(user);
     reply.header('ETag', `"${result.version}"`);
     return result;
   });
@@ -102,12 +103,38 @@ export async function registerAccess(
       )
         throw new ApiError(422, 'INVALID_VERSION');
       const result = await workspace.save(
-        user.companyId,
+        user,
         Number(version.slice(1, -1)),
         request.body,
       );
       reply.header('ETag', `"${result.version}"`);
       return result;
+    },
+  );
+  app.get('/api/v1/audit', async (request) => {
+    const user = await authenticate(options.database, request);
+    const parsed = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(100).default(50),
+        before: z.string().max(512).optional(),
+      })
+      .safeParse(request.query);
+    if (!parsed.success) throw new ApiError(422, 'INVALID_INPUT');
+    return listAudit(
+      options.database,
+      user,
+      parsed.data.limit,
+      parsed.data.before,
+    );
+  });
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/team/:id/recovery',
+    async (request) => {
+      const user = await authenticate(options.database, request);
+      checkCsrf(request, user, options.origin);
+      if (!z.uuid().safeParse(request.params.id).success)
+        throw new ApiError(422, 'INVALID_INPUT');
+      return team.recovery(user, request.params.id);
     },
   );
   app.get('/api/v1/team', async (request) =>
@@ -131,10 +158,10 @@ export async function registerAccess(
   app.patch<{ Params: { id: string } }>('/api/v1/team/:id', async (request) => {
     const user = await authenticate(options.database, request);
     checkCsrf(request, user, options.origin);
-    const parsed = z.object({ active: z.boolean() }).safeParse(request.body);
+    const parsed = memberAccessSchema.safeParse(request.body);
     if (!parsed.success || !z.uuid().safeParse(request.params.id).success)
       throw new ApiError(422, 'INVALID_INPUT');
-    return team.access(user, request.params.id, parsed.data.active);
+    return team.access(user, request.params.id, parsed.data);
   });
   app.post<{ Querystring: { projectId: string } }>(
     '/api/v1/files',
@@ -146,19 +173,14 @@ export async function registerAccess(
         throw new ApiError(422, 'INVALID_FILE');
       const bytes = await file.toBuffer();
       if (file.file.truncated) throw new ApiError(413, 'FILE_TOO_LARGE');
-      return files.upload(
-        user.companyId,
-        request.query.projectId,
-        file.filename,
-        bytes,
-      );
+      return files.upload(user, request.query.projectId, file.filename, bytes);
     },
   );
   app.get<{ Params: { id: string } }>(
     '/api/v1/files/:id',
     async (request, reply) => {
       const user = await authenticate(options.database, request);
-      const file = await files.get(user.companyId, request.params.id);
+      const file = await files.get(user, request.params.id);
       return reply
         .type(file.mime)
         .header(
@@ -173,7 +195,7 @@ export async function registerAccess(
     async (request) => {
       const user = await authenticate(options.database, request);
       checkCsrf(request, user, options.origin);
-      return files.remove(user.companyId, request.params.id);
+      return files.remove(user, request.params.id);
     },
   );
 }

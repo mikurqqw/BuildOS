@@ -20,7 +20,7 @@ export function ProjectDetail({
   onTask: (id: string) => void;
 }) {
   const { id } = useParams();
-  const { data } = useWorkspace();
+  const { data, canWrite } = useWorkspace();
   const { t, date, money } = useI18n();
   const project = data.projects.find((item) => item.id === id);
   if (!project)
@@ -50,10 +50,12 @@ export function ProjectDetail({
             <MapPin size={16} />
             {project.city || '—'}
           </p>
-          <button className="button" onClick={() => onEdit(project)}>
-            <Pencil size={15} />
-            {t.editProject}
-          </button>
+          {canWrite('projects') && (
+            <button className="button" onClick={() => onEdit(project)}>
+              <Pencil size={15} />
+              {t.editProject}
+            </button>
+          )}
         </div>
         <Architecture variant={15} />
       </div>
@@ -88,10 +90,12 @@ export function ProjectDetail({
       </div>
       <div className="section-heading">
         <h2>{t.tasks}</h2>
-        <button className="button primary" onClick={() => onTask(project.id)}>
-          <Plus size={17} />
-          {t.newTask}
-        </button>
+        {canWrite('tasks') && (
+          <button className="button primary" onClick={() => onTask(project.id)}>
+            <Plus size={17} />
+            {t.newTask}
+          </button>
+        )}
       </div>
       {tasks.length ? (
         <div className="table-container">

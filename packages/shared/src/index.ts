@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  supplierSchema,
+  stockMovementSchema,
+  paymentSchema,
+  stageSchema,
+} from './operations.js';
+export * from './operations.js';
+export * from './access.js';
+export * from './policies.js';
 export * from './auth.js';
 export * from './materials.js';
 export { createTimeline } from './timeline.js';
@@ -34,6 +43,9 @@ export const taskSchema = z.object({
   status: z.enum(['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE', 'CANCELLED']),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
   weight: z.number().min(0.1).max(1000),
+  start: z.iso.date().optional(),
+  stageId: id.optional(),
+  dependsOn: z.array(id).max(100).default([]),
 });
 export const issueSchema = z.object({
   id: id.default(() => crypto.randomUUID()),
@@ -65,6 +77,15 @@ export const documentSchema = z.object({
     .max(20 * 1024 * 1024),
   mime: z.string().max(200),
   createdAt: z.iso.datetime(),
+  seriesId: id.optional(),
+  version: z.number().int().min(1).default(1),
+  reviewStatus: z
+    .enum(['draft', 'pending', 'approved', 'rejected'])
+    .default('draft'),
+  submittedBy: z.string().max(100).optional(),
+  reviewedBy: z.string().max(100).optional(),
+  reviewedAt: z.iso.datetime().optional(),
+  reviewNote: z.string().max(1000).default(''),
 });
 export const memberSchema = z.object({
   id: id.default(() => crypto.randomUUID()),
@@ -82,7 +103,20 @@ export const requestSchema = z.object({
   quantity: z.number().positive().max(1e9),
   unit: z.string().trim().min(1).max(30),
   due: z.iso.date(),
-  status: z.enum(['requested', 'received']),
+  status: z.enum([
+    'requested',
+    'submitted',
+    'approved',
+    'rejected',
+    'ordered',
+    'received',
+    'cancelled',
+  ]),
+  supplierId: id.optional(),
+  unitPrice: z.number().int().min(0).max(100_000_000_000).default(0),
+  createdBy: z.string().max(100).optional(),
+  approvedBy: z.string().max(100).optional(),
+  approvedAt: z.iso.datetime().optional(),
 });
 export const activitySchema = z.object({
   id,
@@ -99,6 +133,7 @@ export const activitySchema = z.object({
   ]),
   title: z.string().max(255),
   createdAt: z.iso.datetime(),
+  projectId: id.optional(),
 });
 export const workspaceSchema = z
   .object({
@@ -111,15 +146,106 @@ export const workspaceSchema = z
     members: z.array(memberSchema).max(5000),
     requests: z.array(requestSchema).max(10000),
     activity: z.array(activitySchema).max(200),
+    suppliers: z.array(supplierSchema).max(10000).default([]),
+    stockMovements: z.array(stockMovementSchema).max(50000).default([]),
+    payments: z.array(paymentSchema).max(20000).default([]),
+    stages: z.array(stageSchema).max(10000).default([]),
   })
   .superRefine((value, context) => {
     const ids = new Set(value.projects.map((project) => project.id));
+    const issue = (path: (string | number)[], message: string) =>
+      context.addIssue({ code: 'custom', path, message });
+    const tasks = new Map(value.tasks.map((item) => [item.id, item]));
+    const stages = new Map(value.stages.map((item) => [item.id, item]));
+    const budget = new Map(value.budgetLines.map((item) => [item.id, item]));
+    const requests = new Map(value.requests.map((item) => [item.id, item]));
+    const suppliers = new Set(value.suppliers.map((item) => item.id));
+    const degree = new Map(value.tasks.map((item) => [item.id, 0]));
+    const followers = new Map<string, string[]>();
+    value.tasks.forEach((task, index) => {
+      if (task.start && task.start > task.due)
+        issue(['tasks', index, 'start'], 'INVALID_TASK_DATES');
+      if (new Set(task.dependsOn).size !== task.dependsOn.length)
+        issue(['tasks', index, 'dependsOn'], 'DUPLICATE_DEPENDENCY');
+      for (const id of task.dependsOn) {
+        const parent = tasks.get(id);
+        if (!parent || parent.projectId !== task.projectId || id === task.id) {
+          issue(['tasks', index, 'dependsOn'], 'INVALID_DEPENDENCY');
+          continue;
+        }
+        degree.set(task.id, (degree.get(task.id) ?? 0) + 1);
+        followers.set(id, [...(followers.get(id) ?? []), task.id]);
+        if (parent.due > (task.start ?? task.due))
+          issue(['tasks', index, 'dependsOn'], 'DEPENDENCY_DATES');
+      }
+      if (task.stageId) {
+        const stage = stages.get(task.stageId);
+        if (!stage || stage.projectId !== task.projectId)
+          issue(['tasks', index, 'stageId'], 'INVALID_STAGE');
+        else if (task.due > stage.end || (task.start ?? task.due) < stage.start)
+          issue(['tasks', index, 'stageId'], 'TASK_OUTSIDE_STAGE');
+      }
+    });
+    const queue = [...degree]
+      .filter(([, count]) => count === 0)
+      .map(([id]) => id);
+    let visited = 0;
+    for (let index = 0; index < queue.length; index++) {
+      visited++;
+      for (const child of followers.get(queue[index]!) ?? []) {
+        degree.set(child, degree.get(child)! - 1);
+        if (degree.get(child) === 0) queue.push(child);
+      }
+    }
+    if (visited !== value.tasks.length) issue(['tasks'], 'DEPENDENCY_CYCLE');
+    value.stages.forEach((stage, index) => {
+      const project = value.projects.find(
+        (item) => item.id === stage.projectId,
+      );
+      if (project && (stage.start < project.start || stage.end > project.end))
+        issue(['stages', index], 'STAGE_OUTSIDE_PROJECT');
+    });
+    value.requests.forEach((item, index) => {
+      if (item.supplierId && !suppliers.has(item.supplierId))
+        issue(['requests', index, 'supplierId'], 'UNKNOWN_SUPPLIER');
+    });
+    value.stockMovements.forEach((item, index) => {
+      if (requests.get(item.requestId)?.projectId !== item.projectId)
+        issue(['stockMovements', index, 'requestId'], 'INVALID_STOCK_REQUEST');
+    });
+    value.payments.forEach((item, index) => {
+      if (
+        item.budgetLineId &&
+        budget.get(item.budgetLineId)?.projectId !== item.projectId
+      )
+        issue(['payments', index, 'budgetLineId'], 'INVALID_BUDGET_REFERENCE');
+    });
+    const series = new Map<string, typeof value.documents>();
+    for (const document of value.documents) {
+      const key = document.seriesId ?? document.id;
+      series.set(key, [...(series.get(key) ?? []), document]);
+    }
+    for (const [id, documents] of series) {
+      const sorted = [...documents].sort((a, b) => a.version - b.version);
+      if (
+        sorted[0]?.id !== id ||
+        sorted.some(
+          (item, index) =>
+            item.version !== index + 1 ||
+            item.projectId !== sorted[0]?.projectId,
+        )
+      )
+        issue(['documents'], 'INVALID_DOCUMENT_VERSIONS');
+    }
     for (const collection of [
       'tasks',
       'issues',
       'budgetLines',
       'documents',
       'requests',
+      'stockMovements',
+      'payments',
+      'stages',
     ] as const) {
       for (const [index, item] of value[collection].entries())
         if (!ids.has(item.projectId))
@@ -137,6 +263,10 @@ export const workspaceSchema = z
       'documents',
       'members',
       'requests',
+      'suppliers',
+      'stockMovements',
+      'payments',
+      'stages',
     ] as const) {
       if (
         new Set(value[collection].map((item) => item.id)).size !==
@@ -164,6 +294,10 @@ export const emptyWorkspace = (): Workspace => ({
   members: [],
   requests: [],
   activity: [],
+  suppliers: [],
+  stockMovements: [],
+  payments: [],
+  stages: [],
 });
 export function progress(
   tasks: ReadonlyArray<{ status: string; weight: number }>,

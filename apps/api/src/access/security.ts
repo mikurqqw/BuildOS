@@ -17,7 +17,7 @@ export async function authenticate(
   if (!value || !/^[a-f0-9]{64}$/.test(value))
     throw new ApiError(401, 'UNAUTHENTICATED');
   const result = await pool.query<AuthUser>(
-    'SELECT u.id,u."companyId",u.name,u.email,u.role,u.position,c.name AS company FROM "AuthSession" s JOIN "AppUser" u ON u.id=s."userId" JOIN "Company" c ON c.id=u."companyId" WHERE s."tokenHash"=$1 AND s."expiresAt">now() AND u.active=true',
+    'SELECT u.id,u."companyId",u.name,u.email,u.role,u.position,u."allProjects",u."projectIds",c.name AS company FROM "AuthSession" s JOIN "AppUser" u ON u.id=s."userId" JOIN "Company" c ON c.id=u."companyId" WHERE s."tokenHash"=$1 AND s."expiresAt">now() AND u.active=true',
     [digest(value)],
   );
   const user = result.rows[0];

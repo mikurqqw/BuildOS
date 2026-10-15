@@ -1,7 +1,13 @@
+import { docsKk } from './operations-docs';
+import { errorsKk } from './operations-errors';
+import { accessKk } from './operations-access';
 import { upgradeKk } from './upgrade';
 import type { Messages } from './ru';
 export const kk: Messages = {
   ...upgradeKk,
+  ...accessKk,
+  ...docsKk,
+  ...errorsKk,
   buildTogether: 'Бірге саламыз. Жақсырақ саламыз.',
   precision: 'Әрбір бөлшектегі дәлдік',
   browserStorage: 'БРАУЗЕР ҚОЙМАСЫ',

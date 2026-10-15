@@ -1,6 +1,12 @@
+import { docsRu } from './operations-docs';
+import { errorsRu } from './operations-errors';
+import { accessRu } from './operations-access';
 import { upgradeRu } from './upgrade';
 export const ru = {
   ...upgradeRu,
+  ...accessRu,
+  ...docsRu,
+  ...errorsRu,
   buildTogether: 'Строим вместе. Строим лучше.',
   precision: 'Точность в каждой детали',
   browserStorage: 'ХРАНИЛИЩЕ БРАУЗЕРА',
